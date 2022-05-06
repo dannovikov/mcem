@@ -70,12 +70,10 @@ def perturb_sequences(seqs, p=0.01, keep_same_nucl_allowed=True):
         for i in range(len(seq)):
             nucl = seq[i]
             if random.random() < p:
-                if keep_same_nucl_allowed:
-                    seq = seq[:i] + random.choice(["A", "C", "G", "T"]) + seq[i + 1 :]
-                else:
-                    options = ["A", "C", "G", "T"]
+                options = ["A", "C", "G", "T"]
+                if not keep_same_nucl_allowed:
                     options.remove(nucl)
-                    seq = seq[:i] + random.choice(options) + seq[i + 1 :]
+                seq = seq[:i] + random.choice(options) + seq[i + 1 :]
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
 
@@ -123,11 +121,8 @@ def run_sphere(fasta, custom_ref=None):
     )
 
     # Run commands
-    print("SPHERE")
     subprocess.run(sphere_cmd.split(" "), stdout=subprocess.DEVNULL)
-    print("SPHERE to newick")
     subprocess.run(sphere_to_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
-    print("Binary newick")
     subprocess.run(sphere_to_binary_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
 
     # Read output file to return newick as string
@@ -215,13 +210,14 @@ def main():
     except:
         ref = f"{SPHERE_DIR}/sample_inputs/ref.fas"
 
-    num_iter = 1
+    num_iter = 100
 
     seqs = create_seqs_dict(fasta)
 
+    running_results = []
     tree_index = 0
-
     while tree_index < num_iter:
+        print(f"\ntree_index: {tree_index}")
         computed_trees = []
         # Create perturbed sequences
         pert_seqs = perturb_sequences(seqs)
@@ -275,11 +271,11 @@ def main():
         )
 
         print(
-            "Parsimony of original:\t",
+            "[RAxML] Parsimony of original:\t",
             compute_parsimony_score(raxml_nwk_path, fasta_with_ref),
         )
         print(
-            "Parsimony of MC min_ent:\t ",
+            "[RAxML] Parsimony of MC min_ent:\t ",
             compute_parsimony_score(raxml_mc_nwk_path, fasta_with_ref),
         )
 
@@ -299,8 +295,6 @@ def main():
             "[RAxML] Parsimony of MC min_ent (perturbed):\t ",
             compute_parsimony_score(sphere_mc_pert_nwk_path, pert_fasta_with_ref),
         )
-
-        tree_index += 1
 
         for tree in [
             sphere_nwk,
@@ -336,9 +330,13 @@ def main():
         with open(f"{OUT_DIR}/results_{tree_index}.json", "w") as f:
             json.dump(results, f)
 
+        running_results.append(results_to_df(results))
+
         tree_index += 1
 
-    print(results_to_df(results))
+    final_results = sum(running_results) / len(running_results)
+
+    print(final_results)
 
 
 if __name__ == "__main__":
