@@ -1,5 +1,5 @@
-"""
-This program tests the stability of a phylogeny tree by randomly mutating a small percentage of nucleotides, recomputing the tree, and comparing the differences between before and after.
+"""This program tests the stability of a phylogeny tree by randomly mutating a small percentage of nucleotides,
+recomputing the tree, and comparing the differences between before and after.
 
 First, a fasta file of aligned sequences will be perturbed, changing nucleotides randomly. 
 
@@ -74,7 +74,7 @@ def perturb_sequences(seqs, p=0.01, keep_same_nucl_allowed=True):
                 options = ["A", "C", "G", "T"]
                 if not keep_same_nucl_allowed:
                     options.remove(nucl)
-                seq = seq[:i] + random.choice(options) + seq[i + 1 :]
+                seq = seq[:i] + random.choice(options) + seq[i+1:]
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
 
@@ -82,7 +82,7 @@ def perturb_sequences(seqs, p=0.01, keep_same_nucl_allowed=True):
 def run_sphere(fasta, custom_ref=None):
     # Construct commands to run sphere and produce binary newick
     if custom_ref:
-        print("Using referece: ", custom_ref)
+        print("Using reference: ", custom_ref)
         sphere_cmd = (
             f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
             f"-i {fasta} "
@@ -212,7 +212,7 @@ def main():
     fasta = sys.argv[1]
     try:
         ref = sys.argv[2]
-    except:
+    except IndexError:
         ref = f"{SPHERE_DIR}/sample_inputs/ref.fas"
 
     num_iter = 20
