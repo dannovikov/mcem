@@ -1,7 +1,7 @@
 # mcem
 ## Monte Carlo Entropy Minimization 
 
-This project explores the process of minimizing the entropy of phylogenetic trees. 
+This project explores the process of obtaining minimum entropy phylogenetic trees. It contains a monte-carlo based entropy minimization algorithm and an experiment that tests the affects of minimizing entropy on stability of trees with respect to small perturbations in the input data. 
 
 ----
 
