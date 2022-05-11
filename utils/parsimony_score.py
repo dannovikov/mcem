@@ -15,7 +15,7 @@ def compute_parsimony_score(nwk, fasta):
 
     taxa = dendropy.TaxonNamespace()
     tree = dendropy.Tree.get(
-        path=nwk, schema="newick", taxon_namespace=taxa, preserve_underscores=True
+        path=nwk, schema="newick", taxon_namespace=taxa, preserve_underscores=True, suppress_edge_lengths=True
     )
     chars = dendropy.DnaCharacterMatrix.get(
         path=fasta, schema="fasta", taxon_namespace=taxa

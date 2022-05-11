@@ -41,7 +41,8 @@ def create_seqs_matrix_numerical(seqs, SEQ_LEN):
     """
     seqs_m = np.zeros(shape=(len(seqs), SEQ_LEN))
     seqs_index = {}
-    for i, seq_id in enumerate(tqdm(seqs)):
+    #for i, seq_id in enumerate(tqdm(seqs)):
+    for i, seq_id in enumerate(seqs):
         seqs_index[seq_id] = i
         for j, nucl in enumerate(seqs[seq_id]):
             if nucl == "A":
@@ -66,7 +67,8 @@ def create_seqs_matrix(seqs, SEQ_LEN):
     """
     seqs_m = np.zeros(shape=(len(seqs), SEQ_LEN, 5))
     seqs_index = {}
-    for i, seq_id in enumerate(tqdm(seqs)):
+    #for i, seq_id in enumerate(tqdm(seqs)):
+    for i, seq_id in enumerate(seqs):
         seqs_index[seq_id] = i
         for j, nucl in enumerate(seqs[seq_id]):
             if nucl == "A":
@@ -93,7 +95,8 @@ def assign_internal_node_labels(tree):
 
 def create_counts_matrices(tree, seqs_m, seqs_index, SEQ_LEN):
     counts = {}
-    for i in tqdm(tree.nodes()):
+    #for i in tqdm(tree.nodes()):
+    for i in tree.nodes():
         leaves = [k.taxon.label for k in i.leaf_iter()]
         count = np.zeros(shape=(SEQ_LEN, 5))
         for leaf in leaves:
@@ -120,6 +123,7 @@ def update_counts(counts, tree, i, i_parent, j_parent, lca):
     p = i_parent
     while p and p != lca:
         counts[p.label]["counts"] -= counts[i.label]["counts"]
+        assert all(j >= 0 for i in counts[p.label]['counts'] for j in i), f"Error in update counts subtracting {[x for x in counts[p.label]['counts'] if -1 in x]}, {p.label=}"
         counts[p.label]["size"] -= counts[i.label]["size"]
         counts[p.label]["entropy"] = compute_cluster_entropy(p, counts)
         p = p.parent_node
@@ -127,6 +131,7 @@ def update_counts(counts, tree, i, i_parent, j_parent, lca):
     p = j_parent
     while p and p != lca:
         counts[p.label]["counts"] += counts[i.label]["counts"]
+        assert all(j >= 0 for i in counts[p.label]['counts'] for j in i), "Error in update counts adding"
         counts[p.label]["size"] += counts[i.label]["size"]
         counts[p.label]["entropy"] = compute_cluster_entropy(p, counts)
         p = p.parent_node
@@ -192,6 +197,7 @@ def compute_cluster_entropy(cluster, counts):
         for pos in range(SEQ_LEN):
             count = counts[cluster.label]["counts"][pos, i]  # of A's @ pos i
             p_i = count / size
+            assert 0 <= p_i <= 1, f"ERROR: mc encountered {p_i=}, {count=}, {pos=}, {SEQ_LEN=}"
             entropy = p_i * np.log2(p_i) if p_i != 0 else 0
             col_entropy += entropy
     return col_entropy / SEQ_LEN
@@ -199,7 +205,8 @@ def compute_cluster_entropy(cluster, counts):
 
 def compute_tree_entropy(tree, counts):
     tree_entropy = 0
-    for node in tqdm(tree.nodes(), leave=False):
+    #for node in tqdm(tree.nodes(), leave=False):
+    for node in tree.nodes():
         entropy = counts[node.label]["entropy"]
         size = counts[node.label]["size"]
         tree_entropy += entropy * size
@@ -208,7 +215,8 @@ def compute_tree_entropy(tree, counts):
 
 def compute_tree_entropy_dividebyparent(tree, counts):
     tree_entropy = 0
-    for cluster in tqdm(tree.nodes(), leave=False):
+    #for cluster in tqdm(tree.nodes(), leave=False):
+    for cluster in tree.nodes():
         if cluster == tree.seed_node:
             continue
         entropy = counts[cluster.label]["entropy"]
@@ -226,7 +234,8 @@ def compute_initial_tree_entropy(tree, counts):
     It is designed to run be used once to obtain initial entropies each cluster.
     """
     tree_entropy = 0
-    for cluster in tqdm(tree.nodes(), leave=False):
+    #for cluster in tqdm(tree.nodes(), leave=False):
+    for cluster in tree.nodes():
         clust_entropy = compute_cluster_entropy(cluster, counts)
         tree_entropy += clust_entropy * counts[cluster.label]["size"]
         counts[cluster.label]["entropy"] = clust_entropy
@@ -234,11 +243,10 @@ def compute_initial_tree_entropy(tree, counts):
 
 
 def move(tree, node_1, node_2, counts):
-    # print(' moving', node_1.label, 'to', node_2.label)
+    print(' moving', node_1.label, 'to', node_2.label)
     global label_counter
     target_parent = node_2.parent_node
     original_parent = node_1.parent_node
-    counts = copy.deepcopy(counts)
     try:
         sibling = node_1.sibling_nodes()[0]
     except:
@@ -333,7 +341,8 @@ def main():
     print("Running moves experiment: ")
 
     total_moves = 0
-    for k in tqdm(range(int(num_iter))):
+    #for k in tqdm(range(int(num_iter))):
+    for k in range(int(num_iter)):
         non_root_nodes = tree_0.nodes(lambda x: x != tree_0.seed_node)
 
         # Select qualifying source node and dest node for move
@@ -379,13 +388,14 @@ def main():
 
         node_i = tree.find_node_with_label(i._get_label())
         node_j = tree.find_node_with_label(j._get_label())
-        i_parent = (
-            node_i.parent_node.parent_node
-        )  # getting grandparent of source node b.c. parent will become a singleton & collapse w/ grandparent
+
+        # get grandparent of source node b.c. parent will become a singleton & collapse w/ grandparent
+        i_parent = (node_i.parent_node.parent_node)
         j_parent = node_j.parent_node
 
+        new_counts = copy.deepcopy(counts)
         lca = get_lca(tree_mod, i, j)
-        new_counts, original_parent = move(tree, node_i, node_j, counts)
+        new_counts, original_parent = move(tree, node_i, node_j, new_counts)
         new_counts = update_counts(new_counts, tree, node_i, i_parent, j_parent, lca)
         entropy = compute_tree_entropy(tree, new_counts)
 

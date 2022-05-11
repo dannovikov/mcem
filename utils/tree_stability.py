@@ -19,7 +19,6 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
-
 import dendropy
 from dendropy.calculate import treecompare
 from parsimony_score import compute_parsimony_score
@@ -52,7 +51,7 @@ def create_seqs_dict(fasta):
     return seqs
 
 
-def perturb_sequences(seqs, p=0.01, keep_same_nucl_allowed=True):
+def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
     """
     This function randomly perturbs nucleotides -> changing to any other nucleotide
     with equal probability, even to the same nucl if keep_same_nucl_allowed=True.
@@ -79,84 +78,25 @@ def perturb_sequences(seqs, p=0.01, keep_same_nucl_allowed=True):
     return perturbed_seqs
 
 
-def run_sphere(fasta, custom_ref=None):
-    # Construct commands to run sphere and produce binary newick
-    if custom_ref:
-        print("Using reference: ", custom_ref)
-        sphere_cmd = (
-            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
-            f"-i {fasta} "
-            f"-r {custom_ref} "
-            f"-e {WORK_DIR}/sphere_edges.txt "
-            f"-v {WORK_DIR}/sphere_nodes.txt "
-            f"-s {WORK_DIR}/sphere_seqs.txt"
-        )
-    else:
-        sphere_cmd = (
-            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
-            f"-i {fasta} "
-            f"-r {SPHERE_DIR}/sample_inputs/ref.fas "
-            f"-e {WORK_DIR}/sphere_edges.txt "
-            f"-v {WORK_DIR}/sphere_nodes.txt "
-            f"-s {WORK_DIR}/sphere_seqs.txt"
-        )
-
-    sphere_to_nwk_cmd = (
-        f"python {UTILS_DIR}/sphere_to_newick.py "
-        f"{WORK_DIR}/sphere_nodes.txt "
-        f"{WORK_DIR}/sphere_edges.txt "
-        f"{WORK_DIR}/sphere_seqs.txt "
-        f"{WORK_DIR}/sphere_output.nwk"
-    )
-
-    sphere_to_binary_nwk_cmd = (
-        f"python {UTILS_DIR}/binary.py "
-        f"{WORK_DIR}/sphere_output.nwk "
-        f"{WORK_DIR}/sphere_output_binary.nwk"
-    )
-
-    # Run commands
-    subprocess.run(sphere_cmd.split(" "), stdout=subprocess.DEVNULL)
-    subprocess.run(sphere_to_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
-    subprocess.run(sphere_to_binary_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
-
-    # Read output file to return newick as string
-    nwk_path = f"{WORK_DIR}/sphere_output_binary.nwk"
-    nwk_file = open(nwk_path, "r")
-    nwk = nwk_file.read()
-    nwk_file.close()
-
-    return nwk, nwk_path
-
-
-def run_monte_carlo(nwk, fasta, index, num_iter=10):
-    nwk_out_path = f"{WORK_DIR}/mc_output_{index}.nwk"
-    mc_cmd = (
-        f"python {MC_DIR}/monte_carlo_entropy.py "
-        f"{nwk} {fasta} {nwk_out_path} {num_iter}"
-    )
-    subprocess.run(mc_cmd.split(" "), stdout=subprocess.DEVNULL)
-    with open(nwk_out_path, "r") as nwk_file:
-        nwk = nwk_file.read()
-    return nwk, nwk_out_path
-
-
-def run_raxml(fasta, index):
-    outpath = f"{WORK_DIR}/RAxML_bestTree.{index}"
-    delete_old_files = False
-    for f in os.listdir(WORK_DIR):
-        if "RAxML_" in f:
-            delete_old_files = True
-            break
-    if delete_old_files:
-        os.system(f"rm {WORK_DIR}/RAxML_*")
-
-    raxml_cmd = f"{RAXML_DIR}/raxmlHPC -m GTRCAT -V -s {fasta} -n {index} -w {WORK_DIR} -p 12345 "
-
-    subprocess.run(raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
-    with open(outpath, "r") as nwk_file:
-        nwk = nwk_file.read()
-    return nwk, outpath
+def get_pairwise_distances(computed_trees):
+    # Compute pairwise distances
+    results = {}
+    taxa = dendropy.TaxonNamespace()
+    for i, tree in tqdm(enumerate(computed_trees)):
+        for j, other_tree in enumerate(computed_trees):
+            if i != j:
+                t0 = dendropy.Tree.get(
+                    path=tree, schema="newick", taxon_namespace=taxa
+                )
+                t1 = dendropy.Tree.get(
+                    path=other_tree, schema="newick", taxon_namespace=taxa
+                )
+                d = treecompare.symmetric_difference(t0, t1)
+                if i in results:
+                    results[i][j] = d
+                else:
+                    results[i] = {j: d}
+    return results
 
 
 def write_seqs(seqs, out_file):
@@ -195,178 +135,192 @@ def clear_working_dir():
     os.system(f"rm {WORK_DIR}/*")
 
 
+def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
+    if tree_index is None:
+        raise ValueError("Please provide an index to name the sphere output file")
+
+    # Construct commands to run sphere and produce binary newick
+    if perturbed:
+        nwk_path = f"{WORK_DIR}/sphere_binary_p_{tree_index}.nwk"
+    else:
+        nwk_path = f"{WORK_DIR}/sphere_binary_{tree_index}.nwk"
+
+    if custom_ref:
+        #print("Using reference: ", custom_ref)
+        sphere_cmd = (
+            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
+            f"-i {fasta} "
+            f"-r {custom_ref} "
+            f"-e {WORK_DIR}/sphere_edges.txt "
+            f"-v {WORK_DIR}/sphere_nodes.txt "
+            f"-s {WORK_DIR}/sphere_seqs.txt"
+        )
+    else:
+        sphere_cmd = (
+            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
+            f"-i {fasta} "
+            f"-r {SPHERE_DIR}/sample_inputs/ref.fas "
+            f"-e {WORK_DIR}/sphere_edges.txt "
+            f"-v {WORK_DIR}/sphere_nodes.txt "
+            f"-s {WORK_DIR}/sphere_seqs.txt"
+        )
+
+    sphere_to_nwk_cmd = (
+        f"python {UTILS_DIR}/sphere_to_newick.py "
+        f"{WORK_DIR}/sphere_nodes.txt "
+        f"{WORK_DIR}/sphere_edges.txt "
+        f"{WORK_DIR}/sphere_seqs.txt "
+        f"{WORK_DIR}/sphere_output.nwk"
+    )
+
+    sphere_to_binary_nwk_cmd = (
+        f"python {UTILS_DIR}/binary.py "
+        f"{WORK_DIR}/sphere_output.nwk "
+        f"{nwk_path}"
+    )
+
+    # Run commands
+    subprocess.run(sphere_cmd.split(" "), stdout=subprocess.DEVNULL)
+    subprocess.run(sphere_to_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
+    subprocess.run(sphere_to_binary_nwk_cmd.split(" "), stdout=subprocess.DEVNULL)
+
+    # Read output file to return newick as string
+    nwk_file = open(nwk_path, "r")
+    nwk = nwk_file.read()
+    nwk_file.close()
+    return nwk, nwk_path
+
+
+def run_monte_carlo(nwk, fasta, index, num_iter=10):
+    nwk_out_path = f"{WORK_DIR}/mc_output_{index}.nwk"
+    mc_cmd = (
+        f"python {MC_DIR}/monte_carlo_entropy.py "
+        f"{nwk} {fasta} {nwk_out_path} {num_iter}"
+    )
+    subprocess.run(mc_cmd.split(" "), stdout=subprocess.DEVNULL)
+    with open(nwk_out_path, "r") as nwk_file:
+        nwk = nwk_file.read()
+    return nwk, nwk_out_path
+
+
+def run_raxml(fasta, index):
+    rax_outpath = f"{WORK_DIR}/RAxML_bestTree.{index}"
+    nwk_outpath = f"{WORK_DIR}/RAxML_bestTree_standardized.{index}"
+    raxml_cmd = f"{RAXML_DIR}/raxmlHPC -m GTRCAT -V -s {fasta} -n {index} -w {WORK_DIR} -p 12345 "
+    subprocess.run(raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
+    standardize_raxml_cmd = (
+        f"python {UTILS_DIR}/binary.py "
+        f"{rax_outpath} "
+        f"{nwk_outpath}"
+    )
+    subprocess.run(standardize_raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
+    with open(nwk_outpath, "r") as nwk_file:
+        nwk = nwk_file.read()
+    return nwk, nwk_outpath
+
+
+def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
+    print(f"Running experiment {fasta=}, {ref=}, {perturbed=}, {method=}, {tree_index=}")
+    fasta_with_ref = cat(fasta, ref)
+
+    if perturbed:
+        mc_out = f'{method}_p_{tree_index}'
+        raxml_out = f'tree_p_{tree_index}'
+    else:
+        mc_out = f'{method}_{tree_index}'
+        raxml_out = f'tree_{tree_index}'
+
+    if method.lower() == 'sphere':
+        nwk, nwk_path = run_sphere(fasta, ref, perturbed, tree_index)
+    elif method.lower() == 'raxml':
+        nwk, nwk_path = run_raxml(fasta_with_ref, raxml_out)
+    else:
+        raise ValueError(f'{method} is an invalid choice for method. Please use one of ["sphere", "raxml"]')
+
+    orig_pscore = compute_parsimony_score(nwk_path, fasta_with_ref)
+    mc_nwk, mc_nwk_path = run_monte_carlo(nwk_path, fasta_with_ref, mc_out, num_iter=mc_iter)
+    mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
+    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore
+
+
 def main():
     """
     Required arguments:
         fasta:  path to fasta file WITHOUT REFERENCE SEQUENCE
     Optional arguments:
         ref:  path to reference fasta file [default: EPI_ISL_405124]
-
-
-    Future:
-    [X] p:  probability that nucleotide changes
-    [X] keep_same_nucl_allowed:  allow changing nucleotide to keep same state
-
     """
+    num_trees = 10
+    mc_iter = 25
+    p = 0.01
 
-    fasta = sys.argv[1]
+    fasta_path = sys.argv[1]
     try:
-        ref = sys.argv[2]
+        ref_path = sys.argv[2]
     except IndexError:
-        ref = f"{SPHERE_DIR}/sample_inputs/ref.fas"
+        ref_path = f"{SPHERE_DIR}/sample_inputs/ref.fas"
 
-    num_iter = 20
-
-    seqs = create_seqs_dict(fasta)
-
-    running_results = {"dists": [], "pscores": []}
-    tree_index = 0
-
-    while tree_index < num_iter:
-        print(f"\ntree_index: {tree_index}")
-
-        clear_working_dir()
-
-        pscores = {}
-
-        # Create perturbed sequences
-        pert_seqs = perturb_sequences(seqs)
-        pert_fasta_path = "pert_seqs.fasta"
-        write_seqs(pert_seqs, pert_fasta_path)
-
-        # Concatenate fasta and reference
-        fasta_with_ref = cat(fasta, ref)
-        pert_fasta_with_ref = cat(pert_fasta_path, ref)
-
-        # Run Sphere and MC on original sequences
-        print("Running Sphere on original sequences")
-        sphere_nwk, sphere_nwk_path = run_sphere(fasta, ref)
-        pscores["sphere"] = compute_parsimony_score(sphere_nwk_path, fasta_with_ref)
-
-        print("Running Monte Carlo on sphere output")
-        sphere_mc_nwk, sphere_mc_nwk_path = run_monte_carlo(
-            sphere_nwk_path, fasta_with_ref, f"orig_{tree_index}", num_iter=25
-        )
-        pscores["sphere_mc"] = compute_parsimony_score(
-            sphere_mc_nwk_path, fasta_with_ref
-        )
-
-        print("[SPHERE] Parsimony of original:\t", pscores["sphere"])
-        print("[SPHERE] Parsimony of MC min_ent:\t ", pscores["sphere_mc"])
-
-        # Run Sphere and MC on perturbed sequences
-        print("Running Sphere on perturbed sequences")
-        sphere_pert_nwk, sphere_pert_nwk_path = run_sphere(pert_fasta_path, ref)
-        pscores["sphere_pert"] = compute_parsimony_score(
-            sphere_pert_nwk_path, pert_fasta_with_ref
-        )
-
-        print("Running Monte Carlo on sphere output")
-        sphere_mc_pert_nwk, sphere_mc_pert_nwk_path = run_monte_carlo(
-            sphere_pert_nwk_path, pert_fasta_with_ref, f"pert_{tree_index}", num_iter=25
-        )
-        pscores["sphere_mc_pert"] = compute_parsimony_score(
-            sphere_mc_pert_nwk_path, pert_fasta_with_ref
-        )
-
-        print("[SPHERE] Parsimony of original (perturbed):\t", pscores["sphere_pert"])
-        print(
-            "[SPHERE] Parsimony of MC min_ent (perturbed):\t ",
-            pscores["sphere_mc_pert"],
-        )
-
-        # Run RAxML and MC on original sequences
-        print("Running RAxML on original sequences")
-        raxml_nwk, raxml_nwk_path = run_raxml(fasta_with_ref, f"orig_{tree_index}")
-        pscores["raxml"] = compute_parsimony_score(raxml_nwk_path, fasta_with_ref)
-
-        print("Running Monte Carlo on RAxML output")
-        raxml_mc_nwk, raxml_mc_nwk_path = run_monte_carlo(
-            raxml_nwk_path, fasta_with_ref, f"orig_{tree_index}", num_iter=25
-        )
-        pscores["raxml_mc"] = compute_parsimony_score(raxml_mc_nwk_path, fasta_with_ref)
-
-        print("[RAxML] Parsimony of original:\t", pscores["raxml"])
-        print("[RAxML] Parsimony of MC min_ent:\t ", pscores["raxml_mc"])
-
-        # Run RAxML and MC on perturbed sequences
-        raxml_pert_nwk, raxml_pert_nwk_path = run_raxml(
-            pert_fasta_with_ref, f"pert_{tree_index}"
-        )
-        pscores["raxml_pert"] = compute_parsimony_score(
-            raxml_pert_nwk_path, pert_fasta_with_ref
-        )
-        raxml_mc_pert_nwk, raxml_mc_pert_nwk_path = run_monte_carlo(
-            raxml_pert_nwk_path, pert_fasta_with_ref, f"pert_{tree_index}", num_iter=25
-        )
-        pscores["raxml_mc_pert"] = compute_parsimony_score(
-            raxml_mc_pert_nwk_path, pert_fasta_with_ref
-        )
-
-        print("[RAxML] Parsimony of original (perturbed):\t", pscores["raxml_pert"])
-        print(
-            "[RAxML] Parsimony of MC min_ent (perturbed):\t ",
-            pscores["raxml_mc_pert"],
-        )
-
-        computed_trees = []
-
-        for tree in [
-            sphere_nwk,
-            sphere_mc_nwk,
-            sphere_pert_nwk,
-            sphere_mc_pert_nwk,
-            raxml_nwk,
-            raxml_mc_nwk,
-            raxml_pert_nwk,
-            raxml_mc_pert_nwk,
-        ]:
-            computed_trees.append(tree)
-
-        # Compute pairwise distances
-        results = {}
-        taxa = dendropy.TaxonNamespace()
-        for i, tree in tqdm(enumerate(computed_trees)):
-            for j, other_tree in enumerate(computed_trees):
-                if i != j:
-                    t0 = dendropy.Tree.get_from_string(
-                        tree, "newick", taxon_namespace=taxa
-                    )
-                    t1 = dendropy.Tree.get_from_string(
-                        other_tree, "newick", taxon_namespace=taxa
-                    )
-                    d = treecompare.symmetric_difference(t0, t1)
-                    if i in results:
-                        results[i][j] = d
-                    else:
-                        results[i] = {j: d}
-
-        # save results
-        with open(f"{WORK_DIR}/results_{tree_index}.json", "w") as f:
-            json.dump(results, f)
-
-        running_results["dists"].append(matrix_dict_to_df(results))
-        running_results["pscores"].append(pscores)
-
-        tree_index += 1
-
-    final_results = sum(running_results["dists"]) / len(running_results["dists"])
     tree_ids = {
         0: "sphere",
         1: "sphere_mc",
-        2: "sphere_pert",
-        3: "sphere_mc_pert",
-        4: "raxml",
-        5: "raxml_mc",
+        2: "raxml",
+        3: "raxml_mc",
+        4: "sphere_pert",
+        5: "sphere_pert_mc",
         6: "raxml_pert",
-        7: "raxml_mc_pert",
+        7: "raxml_pert_mc"
     }
+
+    seqs = create_seqs_dict(fasta_path)
+
+    tree_index = 0
+    running_results = {"dists": [], "pscores": []}
+    while tree_index < num_trees:
+        print(f"\ntree_index: {tree_index}")
+        clear_working_dir()
+
+        # Create perturbed sequences
+        pert_seqs = perturb_sequences(seqs, p=p)
+        pert_fasta_path = f"{WORK_DIR}/pert_seqs.fasta"
+        write_seqs(pert_seqs, pert_fasta_path)
+
+        # Run experiments
+        computed_trees = []
+        pscores = {}
+        tree_id = 0
+        for fasta in [fasta_path, pert_fasta_path]:
+            perturbed = False if fasta == fasta_path else True
+            for method in ['sphere', 'raxml']:
+                nwk_path, mc_nwk_path, orig_pscore, mc_pscore = run_experiment(
+                    fasta,
+                    ref_path,
+                    method,
+                    tree_index,
+                    perturbed,
+                    mc_iter
+                )
+                print(f"{orig_pscore=}, {mc_pscore=}")
+                computed_trees.append(nwk_path)
+                computed_trees.append(mc_nwk_path)
+
+                pscores[tree_ids[tree_id]] = orig_pscore
+                tree_id += 1
+                pscores[tree_ids[tree_id]] = mc_pscore
+                tree_id += 1
+
+        distances = get_pairwise_distances(computed_trees)
+        running_results["dists"].append(matrix_dict_to_df(distances))
+        running_results["pscores"].append(pscores)
+        tree_index += 1
+
+    final_results = sum(running_results["dists"]) / len(running_results["dists"])
     final_results.rename(index=tree_ids, columns=tree_ids, inplace=True)
     final_results.to_csv(f"{OUT_DIR}/distances.csv")
-    print(final_results)
 
     pscore_df = pd.DataFrame(running_results["pscores"]).T
     pscore_df.to_csv(f"{OUT_DIR}/pscores.csv")
+
+    print(final_results)
     print(pscore_df)
 
 
