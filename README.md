@@ -1,5 +1,7 @@
 # mcem
-Monte Carlo Entropy Minimization 
+## Monte Carlo Entropy Minimization 
+
+This project explores the process of minimizing the entropy of phylogenetic trees. 
 
 ----
 
