@@ -9,4 +9,4 @@ The definition of tree entropy is not settled, but currently we treat each inter
 
 ----
 
-`tree_stability.py` is an experiment to see how far away trees get from themselves when you randomly perturb a small percentage of nucleotides.
+`tree_stability.py` is an experiment to see how far away trees get from themselves when you randomly perturb a small percentage of nucleotides. It takes a fasta file and perturbs some of its nucleotides, then computes SPHERE and RAxML trees on both the original and perturbed sequences. Then, it runs `monte_carlo_entropy.py` to minimize the entropy of each tree. Finally, it computes Robinson-Foulds distance between each pair of the trees, that is, between each tree of both methods, with and without perturbation, and before and after entropy minimization. It also reports the parsimony score of each tree.
