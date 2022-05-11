@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 import dendropy
 from dendropy.calculate import treecompare
-from parsimony_score import compute_parsimony_score
+from utils.parsimony_score import compute_parsimony_score
 
 MC_DIR = "/home/dnovikov1/dan/entropy"  # Monte carlo file
 SPHERE_DIR = "/home/dnovikov1/dan/sphere"  # Sphere
