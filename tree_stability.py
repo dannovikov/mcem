@@ -1,16 +1,10 @@
-"""This program tests the stability of a phylogeny tree by randomly mutating a small percentage of nucleotides,
-recomputing the tree, and comparing the differences between before and after.
-
-First, a fasta file of aligned sequences will be perturbed, changing nucleotides randomly. 
-
-Once the perturbed file is created, 
-
-For each method being tested:
-    construct two trees, one on original data and one on perturbed data
-    (Note: for random methods, we need to find the tree mode in 100 runs.)
-    Compute distance from tree_original to tree_new
-
 """
+Required arguments:
+    1. fasta:  path to fasta file WITHOUT REFERENCE SEQUENCE
+Optional arguments:
+    2. ref:  path to reference fasta file [default: EPI_ISL_405124]
+"""
+
 import sys
 import subprocess
 import random
@@ -244,12 +238,6 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
 
 
 def main():
-    """
-    Required arguments:
-        fasta:  path to fasta file WITHOUT REFERENCE SEQUENCE
-    Optional arguments:
-        ref:  path to reference fasta file [default: EPI_ISL_405124]
-    """
     num_trees = 10
     mc_iter = 25
     p = 0.01

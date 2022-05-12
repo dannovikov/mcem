@@ -4,18 +4,13 @@
     except: existing_tree = False
 """
 
-from contextlib import suppress
-from multiprocessing.sharedctypes import Value
 import dendropy
 import copy
 from tqdm import tqdm
-from numba import jit
 import numpy as np
 import itertools
 import sys
 from matplotlib import pyplot as plt
-import os
-import time
 
 sys.setrecursionlimit(10000)
 
