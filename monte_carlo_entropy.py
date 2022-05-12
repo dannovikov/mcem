@@ -12,46 +12,9 @@ import itertools
 import sys
 from matplotlib import pyplot as plt
 
+from utils.seq_utils import create_seqs_dict
+
 sys.setrecursionlimit(10000)
-
-
-def create_seqs_dict(fasta):
-    seqs = {}
-    with open(fasta, "r") as f:
-        last_label = ""
-        for line, text in enumerate(f):
-            if line % 2 == 0:  # is label
-                # seqs[text.strip()[1:]] = ""
-                seqs[text.strip()[1:].split("|")[0]] = ""
-                last_label = text.strip()[1:]
-            else:
-                seqs[last_label] = text.strip()
-    return seqs
-
-
-def create_seqs_matrix_numerical(seqs, SEQ_LEN):
-    """
-    seqs is a dict mapping id:sequence
-    return index dictionary and an N x M matrix where each row encodes a sequence as {A,C, T, G, -} -> {0, 1, 2, 3, 4}
-    """
-    seqs_m = np.zeros(shape=(len(seqs), SEQ_LEN))
-    seqs_index = {}
-    #for i, seq_id in enumerate(tqdm(seqs)):
-    for i, seq_id in enumerate(seqs):
-        seqs_index[seq_id] = i
-        for j, nucl in enumerate(seqs[seq_id]):
-            if nucl == "A":
-                seqs_m[i][j] = 0
-            elif nucl == "C":
-                seqs_m[i][j] = 1
-            elif nucl == "T":
-                seqs_m[i][j] = 2
-            elif nucl == "G":
-                seqs_m[i][j] = 3
-            else:
-                assert nucl == "-" or nucl == "N"
-                seqs_m[i][j] = 4
-    return seqs_m, seqs_index
 
 
 def create_seqs_matrix(seqs, SEQ_LEN):
@@ -62,7 +25,7 @@ def create_seqs_matrix(seqs, SEQ_LEN):
     """
     seqs_m = np.zeros(shape=(len(seqs), SEQ_LEN, 5))
     seqs_index = {}
-    #for i, seq_id in enumerate(tqdm(seqs)):
+    # for i, seq_id in enumerate(tqdm(seqs)):
     for i, seq_id in enumerate(seqs):
         seqs_index[seq_id] = i
         for j, nucl in enumerate(seqs[seq_id]):
@@ -90,7 +53,7 @@ def assign_internal_node_labels(tree):
 
 def create_counts_matrices(tree, seqs_m, seqs_index, SEQ_LEN):
     counts = {}
-    #for i in tqdm(tree.nodes()):
+    # for i in tqdm(tree.nodes()):
     for i in tree.nodes():
         leaves = [k.taxon.label for k in i.leaf_iter()]
         count = np.zeros(shape=(SEQ_LEN, 5))
@@ -118,7 +81,8 @@ def update_counts(counts, tree, i, i_parent, j_parent, lca):
     p = i_parent
     while p and p != lca:
         counts[p.label]["counts"] -= counts[i.label]["counts"]
-        assert all(j >= 0 for i in counts[p.label]['counts'] for j in i), f"Error in update counts subtracting {[x for x in counts[p.label]['counts'] if -1 in x]}, {p.label=}"
+        assert all(j >= 0 for i in counts[p.label]['counts'] for j in
+                   i), f"Error in update counts subtracting {[x for x in counts[p.label]['counts'] if -1 in x]}, {p.label=}"
         counts[p.label]["size"] -= counts[i.label]["size"]
         counts[p.label]["entropy"] = compute_cluster_entropy(p, counts)
         p = p.parent_node
@@ -168,24 +132,6 @@ def get_lca(tree, i, j):
 
 
 def compute_cluster_entropy(cluster, counts):
-    """
-    Computes average column entropy of a cluster of aligned sequences
-    """
-    col_entropy = 0
-    size = counts[cluster.label]["size"]
-    for i in range(4):  # not 5, don't count dashes
-        count = counts[cluster.label]["counts"][
-            :, i
-        ]  # count of A over all columns which is wrong, we want number of A in row i
-        p_i = sum(count) / size
-        entropy = p_i * np.log(p_i) if p_i != 0 else 0
-        col_entropy += entropy
-        print(f"{counts[cluster.label]=}  {count=}  {p_i=}  {np.log(p_i)=}  {entropy=}")
-    print("cluster entropy = ", col_entropy / SEQ_LEN)
-    return col_entropy / SEQ_LEN
-
-
-def compute_cluster_entropy(cluster, counts):
     col_entropy = 0
     size = counts[cluster.label]["size"]
     for i in range(4):  # {A,C,T,G}
@@ -200,7 +146,7 @@ def compute_cluster_entropy(cluster, counts):
 
 def compute_tree_entropy(tree, counts):
     tree_entropy = 0
-    #for node in tqdm(tree.nodes(), leave=False):
+    # for node in tqdm(tree.nodes(), leave=False):
     for node in tree.nodes():
         entropy = counts[node.label]["entropy"]
         size = counts[node.label]["size"]
@@ -210,7 +156,7 @@ def compute_tree_entropy(tree, counts):
 
 def compute_tree_entropy_dividebyparent(tree, counts):
     tree_entropy = 0
-    #for cluster in tqdm(tree.nodes(), leave=False):
+    # for cluster in tqdm(tree.nodes(), leave=False):
     for cluster in tree.nodes():
         if cluster == tree.seed_node:
             continue
@@ -229,7 +175,7 @@ def compute_initial_tree_entropy(tree, counts):
     It is designed to run be used once to obtain initial entropies each cluster.
     """
     tree_entropy = 0
-    #for cluster in tqdm(tree.nodes(), leave=False):
+    # for cluster in tqdm(tree.nodes(), leave=False):
     for cluster in tree.nodes():
         clust_entropy = compute_cluster_entropy(cluster, counts)
         tree_entropy += clust_entropy * counts[cluster.label]["size"]
@@ -238,7 +184,7 @@ def compute_initial_tree_entropy(tree, counts):
 
 
 def move(tree, node_1, node_2, counts):
-    print(' moving', node_1.label, 'to', node_2.label)
+    # print(' moving', node_1.label, 'to', node_2.label)
     global label_counter
     target_parent = node_2.parent_node
     original_parent = node_1.parent_node
@@ -322,21 +268,21 @@ def main():
     )
     label_counter = assign_internal_node_labels(tree_0)
 
-    print("Creating matrix representaion of sequences... ")
+    # print("Creating matrix representaion of sequences... ")
     seqs_m, seqs_index = create_seqs_matrix(seqs_d, SEQ_LEN)
 
-    print("Creating counts matrices for all nodes... ")
+    # print("Creating counts matrices for all nodes... ")
     counts = create_counts_matrices(tree_0, seqs_m, seqs_index, SEQ_LEN)
 
-    print("Computing starting entropy...")
+    # print("Computing starting entropy...")
     current_entropy = compute_initial_tree_entropy(tree_0, counts)
     starting_entropy = current_entropy
-    print(f"Starting entropy = {starting_entropy}")
+    # print(f"Starting entropy = {starting_entropy}")
 
-    print("Running moves experiment: ")
+    # print("Running moves experiment: ")
 
     total_moves = 0
-    #for k in tqdm(range(int(num_iter))):
+    # for k in tqdm(range(int(num_iter))):
     for k in range(int(num_iter)):
         non_root_nodes = tree_0.nodes(lambda x: x != tree_0.seed_node)
 
@@ -345,10 +291,10 @@ def main():
         j = np.random.choice(non_root_nodes)
         stop = len(tree_0.nodes()) * 10
         while stop != 0 and not (
-            j not in i.preorder_iter()
-            and j.parent_node != i.parent_node
-            and j != i.parent_node
-            # and i.parent_node != tree_0.seed_node
+                j not in i.preorder_iter()
+                and j.parent_node != i.parent_node
+                and j != i.parent_node
+                # and i.parent_node != tree_0.seed_node
         ):
             i = np.random.choice(non_root_nodes)
             j = np.random.choice(non_root_nodes)
@@ -395,9 +341,7 @@ def main():
         entropy = compute_tree_entropy(tree, new_counts)
 
         if entropy < current_entropy:
-            print(
-                f"### Overwriting tree: new tree has entropy {entropy} compared to prev {current_entropy}"
-            )
+            # print(f"### Overwriting tree: new tree has entropy {entropy} compared to prev {current_entropy}")
             counts = new_counts
             tree_0 = tree
             counts.pop(original_parent.label)
@@ -412,7 +356,7 @@ def main():
             total_moves += 1
 
     print(
-        f" Entropy: {starting_entropy} --> {current_entropy} after {total_moves}/{num_iter} accepted moves."
+        f" Entropy:   {starting_entropy:.2f} --> {current_entropy:.2f} after {total_moves}/{num_iter} accepted moves."
     )
     tree_0.write(
         path=out_nwk,
@@ -420,7 +364,7 @@ def main():
         suppress_internal_node_labels=True,
         suppress_edge_lengths=True,
     )
-    print(f"Tree saved to: {out_nwk}")
+    # print(f"Tree saved to: {out_nwk}")
     history.append(current_entropy)
     plt.plot(history)
     plt.ylabel("entropy")

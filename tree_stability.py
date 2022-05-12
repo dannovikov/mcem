@@ -15,7 +15,9 @@ from tqdm import tqdm
 
 import dendropy
 from dendropy.calculate import treecompare
+
 from utils.parsimony_score import compute_parsimony_score
+from utils.seq_utils import create_seqs_dict
 
 MC_DIR = "/home/dnovikov1/dan/entropy"  # Monte carlo file
 SPHERE_DIR = "/home/dnovikov1/dan/sphere"  # Sphere
@@ -23,26 +25,6 @@ RAXML_DIR = "/home/dnovikov1/dan/tools/standard-RAxML"
 UTILS_DIR = "/home/dnovikov1/dan/entropy/utils"
 WORK_DIR = "/home/dnovikov1/dan/entropy/utils/test_outputs"  # Working directory
 OUT_DIR = "/home/dnovikov1/dan/entropy/utils/results"  # Output directory
-
-
-def create_seqs_dict(fasta):
-    """
-    From a fasta file, the function builds a dictionary {label:sequence}.
-    In fasta format, the even # lines are labels that start with ">",
-    the odd # lines are sequences.
-    """
-    seqs = {}
-    with open(fasta, "r") as f:
-        last_label = ""
-        for line, text in enumerate(f):
-            if line % 2 == 0:  # is label
-                # Create new entry in dictionary for upcoming sequence
-                seqs[text.strip()[1:]] = ""
-                last_label = text.strip()[1:]
-            else:
-                # Add sequence to newly created entry
-                seqs[last_label] = text.strip()
-    return seqs
 
 
 def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
@@ -67,30 +49,9 @@ def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
                 options = ["A", "C", "G", "T"]
                 if not keep_same_nucl_allowed:
                     options.remove(nucl)
-                seq = seq[:i] + random.choice(options) + seq[i+1:]
+                seq = seq[:i] + random.choice(options) + seq[i + 1:]
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
-
-
-def get_pairwise_distances(computed_trees):
-    # Compute pairwise distances
-    results = {}
-    taxa = dendropy.TaxonNamespace()
-    for i, tree in tqdm(enumerate(computed_trees)):
-        for j, other_tree in enumerate(computed_trees):
-            if i != j:
-                t0 = dendropy.Tree.get(
-                    path=tree, schema="newick", taxon_namespace=taxa
-                )
-                t1 = dendropy.Tree.get(
-                    path=other_tree, schema="newick", taxon_namespace=taxa
-                )
-                d = treecompare.symmetric_difference(t0, t1)
-                if i in results:
-                    results[i][j] = d
-                else:
-                    results[i] = {j: d}
-    return results
 
 
 def write_seqs(seqs, out_file):
@@ -114,9 +75,26 @@ def cat(fasta, ref):
     return f"{WORK_DIR}/combined.fasta"
 
 
+def get_pairwise_distances(computed_trees):
+    # Compute pairwise distances
+    results = {}
+    taxa = dendropy.TaxonNamespace()
+    for i, tree in tqdm(enumerate(computed_trees)):
+        for j, other_tree in enumerate(computed_trees):
+            if i != j:
+                t0 = dendropy.Tree.get(path=tree, schema="newick", taxon_namespace=taxa)
+                t1 = dendropy.Tree.get(path=other_tree, schema="newick", taxon_namespace=taxa)
+                d = treecompare.symmetric_difference(t0, t1)
+                if i in results:
+                    results[i][j] = d
+                else:
+                    results[i] = {j: d}
+    return results
+
+
 def matrix_dict_to_df(results):
     # results is a dict of {tree : {other_tree: distance}}
-    # returns a pandas dataframe whos values are distances between the trees on the axes
+    # returns a pandas dataframe with trees as the axes and distances as the values
     df = pd.DataFrame()
     for tree in results:
         df.loc[tree, tree] = 0
@@ -130,17 +108,17 @@ def clear_working_dir():
 
 
 def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
-    if tree_index is None:
-        raise ValueError("Please provide an index to name the sphere output file")
-
     # Construct commands to run sphere and produce binary newick
+    if tree_index is None:
+        raise ValueError("Please provide an index to uniquely name the sphere output file")
+
     if perturbed:
         nwk_path = f"{WORK_DIR}/sphere_binary_p_{tree_index}.nwk"
     else:
         nwk_path = f"{WORK_DIR}/sphere_binary_{tree_index}.nwk"
 
     if custom_ref:
-        #print("Using reference: ", custom_ref)
+        # print("Using reference: ", custom_ref)
         sphere_cmd = (
             f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
             f"-i {fasta} "
@@ -187,11 +165,8 @@ def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
 
 def run_monte_carlo(nwk, fasta, index, num_iter=10):
     nwk_out_path = f"{WORK_DIR}/mc_output_{index}.nwk"
-    mc_cmd = (
-        f"python {MC_DIR}/monte_carlo_entropy.py "
-        f"{nwk} {fasta} {nwk_out_path} {num_iter}"
-    )
-    subprocess.run(mc_cmd.split(" "), stdout=subprocess.DEVNULL)
+    mc_cmd = f"python {MC_DIR}/monte_carlo_entropy.py {nwk} {fasta} {nwk_out_path} {num_iter}"
+    subprocess.run(mc_cmd.split(" ")
     with open(nwk_out_path, "r") as nwk_file:
         nwk = nwk_file.read()
     return nwk, nwk_out_path
@@ -199,24 +174,28 @@ def run_monte_carlo(nwk, fasta, index, num_iter=10):
 
 def run_raxml(fasta, index):
     rax_outpath = f"{WORK_DIR}/RAxML_bestTree.{index}"
-    nwk_outpath = f"{WORK_DIR}/RAxML_bestTree_standardized.{index}"
+    final_outpath = f"{WORK_DIR}/RAxML_bestTree_standardized.{index}"
+
+    # Run RAxML
     raxml_cmd = f"{RAXML_DIR}/raxmlHPC -m GTRCAT -V -s {fasta} -n {index} -w {WORK_DIR} -p 12345 "
     subprocess.run(raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
-    standardize_raxml_cmd = (
-        f"python {UTILS_DIR}/binary.py "
-        f"{rax_outpath} "
-        f"{nwk_outpath}"
-    )
+
+    # Standardize output tree to ensure it is binary
+    standardize_raxml_cmd = f"python {UTILS_DIR}/binary.py {rax_outpath} {final_outpath}"
     subprocess.run(standardize_raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
-    with open(nwk_outpath, "r") as nwk_file:
+
+    with open(final_outpath, "r") as nwk_file:
         nwk = nwk_file.read()
-    return nwk, nwk_outpath
+    return nwk, final_outpath
 
 
 def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
-    print(f"Running experiment {fasta=}, {ref=}, {perturbed=}, {method=}, {tree_index=}")
+    print(f"[{method}] {perturbed=}\t{fasta}\t{ref}")
+
+    # Combine fasta and reference
     fasta_with_ref = cat(fasta, ref)
 
+    # Set output files
     if perturbed:
         mc_out = f'{method}_p_{tree_index}'
         raxml_out = f'tree_p_{tree_index}'
@@ -224,6 +203,7 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
         mc_out = f'{method}_{tree_index}'
         raxml_out = f'tree_{tree_index}'
 
+    # Run method
     if method.lower() == 'sphere':
         nwk, nwk_path = run_sphere(fasta, ref, perturbed, tree_index)
     elif method.lower() == 'raxml':
@@ -231,10 +211,22 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
     else:
         raise ValueError(f'{method} is an invalid choice for method. Please use one of ["sphere", "raxml"]')
 
-    orig_pscore = compute_parsimony_score(nwk_path, fasta_with_ref)
+    # Minimize tree entropy with monte carlo
     mc_nwk, mc_nwk_path = run_monte_carlo(nwk_path, fasta_with_ref, mc_out, num_iter=mc_iter)
+
+    orig_pscore = compute_parsimony_score(nwk_path, fasta_with_ref)
     mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
+
     return nwk_path, mc_nwk_path, orig_pscore, mc_pscore
+
+
+def read_args():
+    fasta_path = sys.argv[1]
+    try:
+        ref_path = sys.argv[2]
+    except IndexError:
+        ref_path = f"{SPHERE_DIR}/sample_inputs/ref.fas"
+    return fasta_path, ref_path
 
 
 def main():
@@ -242,11 +234,8 @@ def main():
     mc_iter = 25
     p = 0.01
 
-    fasta_path = sys.argv[1]
-    try:
-        ref_path = sys.argv[2]
-    except IndexError:
-        ref_path = f"{SPHERE_DIR}/sample_inputs/ref.fas"
+    fasta_path, ref_path = read_args()
+    seqs = create_seqs_dict(fasta_path)
 
     tree_ids = {
         0: "sphere",
@@ -259,13 +248,12 @@ def main():
         7: "raxml_pert_mc"
     }
 
-    seqs = create_seqs_dict(fasta_path)
-
-    tree_index = 0
     running_results = {"dists": [], "pscores": []}
+    tree_index = 0
+
     while tree_index < num_trees:
-        print(f"\ntree_index: {tree_index}")
         clear_working_dir()
+        print(f"\nTree: {tree_index}")
 
         # Create perturbed sequences
         pert_seqs = perturb_sequences(seqs, p=p)
@@ -287,7 +275,7 @@ def main():
                     perturbed,
                     mc_iter
                 )
-                print(f"{orig_pscore=}, {mc_pscore=}")
+                print(f" Parsimony: {orig_pscore} --> {mc_pscore}")
                 computed_trees.append(nwk_path)
                 computed_trees.append(mc_nwk_path)
 
@@ -297,10 +285,13 @@ def main():
                 tree_id += 1
 
         distances = get_pairwise_distances(computed_trees)
+
         running_results["dists"].append(matrix_dict_to_df(distances))
         running_results["pscores"].append(pscores)
+
         tree_index += 1
 
+    # Accumulate results
     final_results = sum(running_results["dists"]) / len(running_results["dists"])
     final_results.rename(index=tree_ids, columns=tree_ids, inplace=True)
     final_results.to_csv(f"{OUT_DIR}/distances.csv")
