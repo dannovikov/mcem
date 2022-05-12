@@ -268,14 +268,9 @@ def main():
             perturbed = False if fasta == fasta_path else True
             for method in ['sphere', 'raxml']:
                 nwk_path, mc_nwk_path, orig_pscore, mc_pscore = run_experiment(
-                    fasta,
-                    ref_path,
-                    method,
-                    tree_index,
-                    perturbed,
-                    mc_iter
-                )
-                print(f" Parsimony: {orig_pscore} --> {mc_pscore}")
+                    fasta, ref_path, method, tree_index, perturbed, mc_iter)
+
+                print(f" Parsimony: {orig_pscore}  --> {mc_pscore}")
                 computed_trees.append(nwk_path)
                 computed_trees.append(mc_nwk_path)
 
