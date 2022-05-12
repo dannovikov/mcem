@@ -166,7 +166,7 @@ def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
 def run_monte_carlo(nwk, fasta, index, num_iter=10):
     nwk_out_path = f"{WORK_DIR}/mc_output_{index}.nwk"
     mc_cmd = f"python {MC_DIR}/monte_carlo_entropy.py {nwk} {fasta} {nwk_out_path} {num_iter}"
-    subprocess.run(mc_cmd.split(" ")
+    subprocess.run(mc_cmd.split(" "))
     with open(nwk_out_path, "r") as nwk_file:
         nwk = nwk_file.read()
     return nwk, nwk_out_path
