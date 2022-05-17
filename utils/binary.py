@@ -4,10 +4,12 @@ Output: Binary newick; polytomies resolved with arbitrary dichotomic structure
 
 """
 
+import warnings
+warnings.simplefilter("ignore")
 from ete3 import Tree
 import sys
 
-# t = Tree("gisaid_1a_sphere.nwk")
+
 t = Tree(sys.argv[1])
 t.resolve_polytomy(recursive=True)
 t.standardize(delete_orphan=False)  # deletes internal nodes with 1 child

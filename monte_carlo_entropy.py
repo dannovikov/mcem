@@ -282,8 +282,8 @@ def main():
     # print("Running moves experiment: ")
 
     total_moves = 0
-    # for k in tqdm(range(int(num_iter))):
-    for k in range(int(num_iter)):
+    for k in tqdm(range(int(num_iter))):
+    #for k in range(int(num_iter)):
         non_root_nodes = tree_0.nodes(lambda x: x != tree_0.seed_node)
 
         # Select qualifying source node and dest node for move

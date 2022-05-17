@@ -46,9 +46,12 @@ def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
         for i in range(len(seq)):
             nucl = seq[i]
             if random.random() < p:
-                options = ["A", "C", "G", "T"]
+                options = ["A", "C", "G", "T", "N"]
                 if not keep_same_nucl_allowed:
-                    options.remove(nucl)
+                    try: options.remove(nucl)
+                    except:
+                        print(f"missing nucl = {nucl}")
+                        raise ValueError
                 seq = seq[:i] + random.choice(options) + seq[i + 1:]
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
