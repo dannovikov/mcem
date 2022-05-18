@@ -1,6 +1,38 @@
+"""
+This program computes distances along a phylogenetic tree between two sequences.
+It uses Fitch's algorithm to assign sequences to internal nodes, then for each
+of the two sequences, it computes the sum of edge lengths to their common
+ancestor. Edge lengths are the hamming distance between the nodes. 
+
+Usage:
+
+    Input: tree_path, fasta_path 
+    
+    tree, taxa = read_tree(tree_path)
+    tree = infer_internal_node_sequences(tree, taxa, fasta_path)
+    d = average_distance_along_tree(tree, fasta)
+
+    s1 = "EPI_ISL_402124"
+    s2 = "EPI_ISL_650723"
+
+    d = distance_along_tree(tree, s1, s2)
+
+"""
+
+from distutils.command import check
 import dendropy
 from dendropy.model.parsimony import fitch_down_pass, fitch_up_pass
 import itertools
+
+def hamming_distance(seq1, seq2):
+    assert len(seq1) == len(seq2)
+    d = 0
+    for i in range(len(seq1)):
+        if 'N' in (seq1[i], seq2[i]): continue
+        if seq1[i] != seq2[i]:
+            d += 1
+    return d
+
 
 def get_lca(tree, i, j):
     """
@@ -30,7 +62,7 @@ def assign_seqs_to_nodes(tree, seq_len=None):
         ssl = nd.state_sets         
         seq = ''
         for ss in ssl:
-            s = list(ss)[0]             # if multistate set, choose first state
+            s = list(ss)[0]             # For multistate sets, choose first state
             nucl = str(alphabet[s])
             seq += nucl
         nd.seq = seq
@@ -38,35 +70,45 @@ def assign_seqs_to_nodes(tree, seq_len=None):
             assert len(seq) == seq_len
 
     return tree
+    
+
+def extract_sequence_labels(fasta):
+    seqs = []
+    with open(fasta, 'r') as f:
+        for i, line in enumerate(f):
+            if i % 2 == 0:
+                seqs.append(line.strip()[1:])
+    return seqs
 
 
-def infer_internal_node_sequences(tree_path, fasta):
-
+def read_tree(tree_path):
     taxa = dendropy.TaxonNamespace()
     tree = dendropy.Tree.get_from_path(tree_path,"newick",taxon_namespace=taxa,preserve_underscores=True)
-    data = dendropy.DnaCharacterMatrix.get(path=fasta, schema="fasta", taxon_namespace=taxa)
+    return tree, taxa
 
+
+def ensure_internal_seqs_exist(tree):
+        assert hasattr(tree.nodes()[0], 'seq'), \
+        "all nodes, including internal, must have a .seq property with a DNA sequence. "\
+        "Use 'tree = infer_internal_node_sequences(tree, taxon_namespace, fasta)'"
+
+
+def infer_internal_node_sequences(tree, taxa, fasta):
+    
+    data = dendropy.DnaCharacterMatrix.get(path=fasta, schema="fasta", taxon_namespace=taxa)
     taxon_state_sets_map = data.taxon_state_sets_map(gaps_as_missing=True)
+
     try:
         fitch_down_pass(tree.postorder_node_iter(), taxon_state_sets_map=taxon_state_sets_map)
+        fitch_up_pass(tree.preorder_node_iter())
     except ValueError as e:
-        print("Please ensure tree bifurcates at every internal node.")
+        print("May have encountered something \
+            other than a bifurcation at an internal node.")
         raise e
-    fitch_up_pass(tree.preorder_node_iter())
 
     tree = assign_seqs_to_nodes(tree)
-    
     return tree
         
-
-def hamming_distance(seq1, seq2):
-    d = 0
-    for i in range(len(seq1)):
-        if 'N' in (seq1[i], seq2[i]): continue
-        if seq1[i] != seq2[i]:
-            d += 1
-    return d
-
 
 def distance_to_ancestor(node, ancestor):
     assert node in ancestor.preorder_iter()
@@ -80,17 +122,34 @@ def distance_to_ancestor(node, ancestor):
     return d
 
 
-def distance_along_tree(tree_path, seq1, seq2, fasta):
+def distance_along_tree(tree, seq1, seq2):
     """
-        tree = path to dendropy tree 
+        tree = Dendropy Tree on which infer_internal_node_sequences has been called
+            meaning ALL nodes have a .seq property containing their DNA sequence.
+
         node1, node2 = nodes in tree
-        returns distance along tree between nodes
+        --
+        returns distance along the tree between nodes
     """
-    tree = infer_internal_node_sequences(tree_path, fasta)
+    ensure_internal_seqs_exist(tree)
     node1 = tree.find_node_with_taxon_label(seq1)
     node2 = tree.find_node_with_taxon_label(seq2)
     lca = get_lca(tree, node1, node2)
     d1 = distance_to_ancestor(node1, lca)
     d2 = distance_to_ancestor(node2, lca)
-    print(f"Hamming distance: {hamming_distance(node1.seq, node2.seq)}")
     return d1 + d2
+
+
+def average_distance_along_tree(tree, fasta):
+    ensure_internal_seqs_exist(tree)
+    seqs = extract_sequence_labels(fasta)
+
+    dists = []
+    h_dists = []
+    for i, s1 in enumerate(seqs):
+        for j, s2 in enumerate(seqs):
+            if i != j:
+                d = distance_along_tree(tree, s1, s2)
+                dists.append(d)
+    
+    return sum(dists)/len(dists)
