@@ -60,7 +60,7 @@ def compute_cluster_entropy(cluster, counts):
         for pos in range(SEQ_LEN):
             count = counts[cluster.label]["counts"][pos, i]  # of A's @ pos i
             p_i = count / size
-            assert 0 <= p_i <= 1, f"ERROR: mc encountered {p_i=}, {count=}, {pos=}, {SEQ_LEN=}"
+            # assert 0 <= p_i <= 1, f"ERROR: mc encountered {p_i=}, {count=}, {pos=}, {SEQ_LEN=}"
             entropy = p_i * np.log2(p_i) if p_i != 0 else 0
             col_entropy += entropy
     return col_entropy / SEQ_LEN
@@ -202,19 +202,17 @@ def move(tree, node_1, node_2, counts):
         "counts": counts[node_1.label]["counts"] + counts[node_2.label]["counts"],
         "size": counts[node_1.label]["size"] + counts[node_2.label]["size"],
     }
+
     counts[new_internal.label]["entropy"] = compute_cluster_entropy(new_internal, counts)
+
     label_counter += 1
 
     if original_parent == tree.seed_node:
-        tree.reroot_at_node(sibling, suppress_unifurcations=True)
-        try:
-            tree.prune_subtree(original_parent, suppress_unifurcations=False)
-        except:
-            print("Exception after reroot + prune subtree")
-            pass
+        tree.reroot_at_node(sibling)
+        tree.prune_subtree(original_parent)
     else:
-        ogp_sibling = original_parent.sibling_nodes()[0]
-        original_parent.parent_node.set_child_nodes([sibling, ogp_sibling])
+        uncle = original_parent.sibling_nodes()[0]  #sibling of the original parent node
+        original_parent.parent_node.set_child_nodes([sibling, uncle])
 
     return counts, original_parent
 
