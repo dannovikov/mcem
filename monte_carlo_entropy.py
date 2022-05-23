@@ -16,6 +16,8 @@ from utils.seq_utils import create_seqs_dict
 
 sys.setrecursionlimit(10000)
 
+LABEL_COUNT = 0
+SEQ_LEN = 0
 
 def compute_initial_tree_entropy(tree, counts):
     """
@@ -88,14 +90,13 @@ def update_counts(counts, i, i_parent, j_parent, lca):
 
     Params:
         i: node i being moved
-        i_parent: parent above where i was removed
+        i_parent: grandparent of i
         j_parent: destination parent
     """
     p = i_parent
     while p and p != lca:
         counts[p.label]["counts"] -= counts[i.label]["counts"]
-        assert all(j >= 0 for i in counts[p.label]['counts'] for j in
-                   i), f"Error in update counts subtracting {[x for x in counts[p.label]['counts'] if -1 in x]}, {p.label=}"
+        assert all(j >= 0 for i in counts[p.label]['counts'] for j in i)
         counts[p.label]["size"] -= counts[i.label]["size"]
         counts[p.label]["entropy"] = compute_cluster_entropy(p, counts)
         p = p.parent_node
@@ -109,6 +110,80 @@ def update_counts(counts, i, i_parent, j_parent, lca):
         p = p.parent_node
 
     return counts
+
+
+def update_counts_after_reroot(counts, i, j_parent, new_root):
+    p = j_parent
+    while p:
+        counts[p.label]["counts"] += counts[i.label]["counts"]
+        counts[p.label]["size"] += counts[i.label]["size"]
+        counts[p.label]["entropy"] = compute_cluster_entropy(p, counts)
+        if p == new_root:
+            break
+        p = p.parent_node
+    return counts
+
+
+def move(tree, node_1, node_2, counts):
+    n1_parent= node_1.parent_node
+    n1_sibling = node_1.sibling_nodes()[0]
+    n2_parent = node_2.parent_node
+    tree.prune_subtree(node_1, suppress_unifurcations=False)
+    tree.prune_subtree(node_2, suppress_unifurcations=False)
+    new_internal = create_node()
+    insert_internal_node(new_internal, parent=n2_parent, children=[node_1, node_2])
+    if reroot:=(n1_parent == tree.seed_node):
+        tree.reroot_at_node(n1_sibling, suppress_unifurcations=False)
+        tree.prune_subtree(n1_parent, suppress_unifurcations=False)
+    else:
+        n1_grandparent = n1_parent.parent_node
+        tree.prune_subtree(n1_sibling, suppress_unifurcations=False)
+        tree.prune_subtree(n1_parent, suppress_unifurcations=False)
+        n1_grandparent.add_child(n1_sibling)
+    counts = add_counts_entry(new_internal, node_1, node_2, counts)
+    return counts, reroot
+
+
+def find_valid_move(tree):
+    non_root_nodes = tree.nodes(lambda x: x != tree.seed_node)
+    i = np.random.choice(non_root_nodes)
+    j = np.random.choice(non_root_nodes)
+    keep_searching = len(tree.nodes()) * 10
+    while (
+        j == i.parent_node
+        or j.parent_node == i.parent_node 
+        or j in i.preorder_iter()
+    ) and keep_searching:
+        i = np.random.choice(non_root_nodes)
+        j = np.random.choice(non_root_nodes)
+        keep_searching -= 1
+    if not keep_searching:
+        found = False
+    else:
+        found = True
+    return i, j, found
+
+
+def add_counts_entry(new_internal, node_1, node_2, counts):
+    counts[new_internal.label] = {
+        "counts": counts[node_1.label]["counts"] + counts[node_2.label]["counts"],
+        "size": counts[node_1.label]["size"] + counts[node_2.label]["size"],
+    }
+    counts[new_internal.label]["entropy"] = compute_cluster_entropy(new_internal, counts)
+    return counts
+
+
+def create_node():
+    global LABEL_COUNT
+    nd = dendropy.Node()
+    nd._set_label(str(LABEL_COUNT))
+    LABEL_COUNT += 1
+    return nd
+
+
+def insert_internal_node(node, parent, children):
+    node.set_child_nodes(children)
+    parent.add_child(node)
 
 
 def create_seqs_matrix(seqs, SEQ_LEN):
@@ -176,187 +251,94 @@ def read_args():
         return sys.argv[1:5]
 
 
-def move(tree, node_1, node_2, counts):
-    global label_counter
-    target_parent = node_2.parent_node
-    original_parent = node_1.parent_node
-    try:
-        sibling = node_1.sibling_nodes()[0]
-    except:
-        print("error, can't find sibling, node being moved is likely the root.")
-        print(f"{node_1 == tree.seed_node}")
-        tree.print_plot()
-        print(tree, f"\n{node_1=}{len(node_1)=}\n{tree.seed_node=}")
-        exit()
-
-    tree.prune_subtree(node_1, suppress_unifurcations=False)
-    tree.prune_subtree(node_2, suppress_unifurcations=False)
-
-    new_internal = dendropy.Node()
-    new_internal.set_child_nodes([node_1, node_2])
-    target_parent.add_child(new_internal)
-
-    # assign new label, add new entry to counts matrix
-    new_internal._set_label(str(label_counter))
-    counts[new_internal.label] = {
-        "counts": counts[node_1.label]["counts"] + counts[node_2.label]["counts"],
-        "size": counts[node_1.label]["size"] + counts[node_2.label]["size"],
-    }
-
-    counts[new_internal.label]["entropy"] = compute_cluster_entropy(new_internal, counts)
-
-    label_counter += 1
-
-    if original_parent == tree.seed_node:
-        tree.reroot_at_node(sibling)
-        tree.prune_subtree(original_parent)
-    else:
-        uncle = original_parent.sibling_nodes()[0]  #sibling of the original parent node
-        original_parent.parent_node.set_child_nodes([sibling, uncle])
-
-    return counts, original_parent
+def tree_copy(tree):
+    tree_str = tree.as_string(
+        schema="newick",
+        suppress_leaf_node_labels=False,
+        suppress_internal_node_labels=False,
+        suppress_edge_lengths=True,
+        suppress_rooting=True
+    )
+    tree_new = dendropy.Tree.get(
+        data=tree_str,
+        schema="newick",
+        suppress_edge_lengths=True,
+        preserve_underscores=True,
+        finish_node_fn=finish_node,
+        rooting='force-rooted'
+    )
+    return tree_new
 
 
-label_counter = 0
-SEQ_LEN = 0
+def read_tree(path):
+    tree = dendropy.Tree.get(
+        path=path,
+        schema="newick",
+        suppress_edge_lengths=True,
+        preserve_underscores=True,
+        rooting='force-rooted')
+    return tree
+
 
 def main():
-    global label_counter
+    global LABEL_COUNT
     global SEQ_LEN
 
     nwk, fasta, out_nwk, num_iter = read_args()
 
-    tree_0 = dendropy.Tree.get(path=nwk, schema="newick", suppress_edge_lengths=True, preserve_underscores=True)
-    label_counter = assign_internal_node_labels(tree_0)
+    tree_0 = read_tree(nwk)
+    LABEL_COUNT = assign_internal_node_labels(tree_0)
 
     seqs_d = create_seqs_dict(fasta)  
     SEQ_LEN = len(list(seqs_d.values())[0])
-
     seqs_m, seqs_index = create_seqs_matrix(seqs_d, SEQ_LEN)
     counts = create_counts_matrices(tree_0, seqs_m, seqs_index, SEQ_LEN)
-    current_entropy = compute_initial_tree_entropy(tree_0, counts)
-    starting_entropy = current_entropy
+    starting_entropy = compute_initial_tree_entropy(tree_0, counts)
+
+    current_entropy = starting_entropy
     total_moves = 0
 
     for k in tqdm(range(int(num_iter))):
-
-        non_root_nodes = tree_0.nodes(lambda x: x != tree_0.seed_node)
-
-        # Select valid source node and dest node for move
-        i = np.random.choice(non_root_nodes)
-        j = np.random.choice(non_root_nodes)
-        keep_searching = len(tree_0.nodes()) * 10
-        while (
-            j == i.parent_node
-            or j.parent_node == i.parent_node 
-            or j in i.preorder_iter()
-        ) and keep_searching:
-            i = np.random.choice(non_root_nodes)
-            j = np.random.choice(non_root_nodes)
-            keep_searching -= 1
-
-        if not keep_searching:
-            print("no suitable moves found.")
-            break
-        
-        
-        # Make copies of tree and counts
         # TODO: Retain copies between rejected moves
-        tree_0_str = tree_0.as_string(
-            schema="newick",
-            suppress_leaf_node_labels=False,
-            suppress_internal_node_labels=False,
-            suppress_edge_lengths=True,
-        )
-        tree = dendropy.Tree.get(
-            data=tree_0_str,
-            schema="newick",
-            suppress_edge_lengths=True,
-            preserve_underscores=True,
-            finish_node_fn=finish_node,
-        )
-        tree_mod = dendropy.Tree.get(
-            data=tree_0_str,
-            schema="newick",
-            suppress_edge_lengths=True,
-            preserve_underscores=True,
-            finish_node_fn=finish_node,
-        )
-
-        lca = get_lca(tree_mod, i, j)
-        # lca = get_lca(tree, i, j)
-
+        tree = tree_copy(tree_0)
         new_counts = copy.deepcopy(counts)
 
-        # Attempt the move on copied tree
+        i, j, found = find_valid_move(tree_0)
+        if not found:
+            print("no suitable moves found.")
+            break
 
-        node_i = tree.find_node_with_label(i._get_label())
-        node_j = tree.find_node_with_label(j._get_label())
-
-        i_parent = node_i.parent_node.parent_node ########
-
-        """Somethings not right here
-
-        i dont specifically forbid choosing a source node whos parent is the root.
-        Therefore this line will error as it wont have a grandparent
-
-        why do i need the grandparent?
-            because the parent is supposed to be removed and i need to update the counts from the grandparent up. 
-
-        So maybe I need to just check if the source node is a child of the root
-
-        however,
-        suppose it is the child of the root, then its sibling will become the new root,
-        and the original root will be pruned. What are the implications of that?
-
-        the new lca will be the sibling!
-
-        so is it enough to check:
-
-        if node_i.parent_node = tree.seed_node
-            lca = node_i.sibling
-
-        and then calling 
-
-        update_counts(lca, dest_node)?
-            the subtraction loop will be skipped as p == lca immediately
-            (also this may be hard to interpret by other readers)
-
-        So first, I need to see what's going on with parent removal. 
-        Does it need to be explicit or does prune subtree handle it.
-        To do this, I need to create a small test case (which I have)
-        and make a bunch of moves and see if...
-
-        But wait, first first I should test to see if my except 
-        clause ever happens.
-
-        unrelated: (Also consider adding tree normalization step automatically)
-        """
-
+        node_i = tree.find_node_with_label(i.label)
+        node_j = tree.find_node_with_label(j.label)
         j_parent = node_j.parent_node
 
-        new_counts, original_parent = move(tree, node_i, node_j, new_counts)
-        new_counts = update_counts(new_counts, node_i, i_parent, j_parent, lca)
+        new_counts, rerooted = move(tree, node_i, node_j, new_counts)
+
+        if rerooted:
+            new_counts = update_counts_after_reroot(new_counts, node_i, j_parent, tree.seed_node)
+        else:
+            lca = get_lca(tree, i, j)
+            i_grandparent = i.parent_node.parent_node
+            new_counts = update_counts(new_counts, node_i, i_grandparent, j_parent, lca)
+
         entropy = compute_tree_entropy(tree, new_counts)
-
         if entropy < current_entropy:
-            # Accept the move
-            counts = new_counts
             tree_0 = tree
-            counts.pop(original_parent.label)
+            counts = new_counts
             current_entropy = entropy
-            tree_0.write(path=out_nwk,schema="newick",
-                suppress_internal_node_labels=True,suppress_edge_lengths=True)
             total_moves += 1
+            tree_0.write(path=out_nwk,schema="newick",
+                suppress_internal_node_labels=True,suppress_edge_lengths=True, suppress_rooting=True)
+            
 
-    print(f" Entropy:   {starting_entropy:.2f} --> {current_entropy:.2f} after {total_moves}/{num_iter} accepted moves."
-    )
+    print(f" Entropy:   {starting_entropy:.2f} --> {current_entropy:.2f} after {total_moves}/{num_iter} accepted moves.")
     #Save final tree
     tree_0.write(
         path=out_nwk,
         schema="newick",
         suppress_internal_node_labels=True,
         suppress_edge_lengths=True,
+        suppress_rooting=True,
     )
 
 
