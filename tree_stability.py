@@ -69,12 +69,9 @@ def cat(fasta, ref):
         with open(ref, "r") as r:
             with open(f"{WORK_DIR}/combined.fasta", "w") as c:
                 for line, text in enumerate(r):
-                    if text != "\n":
-                        c.write(text)
-                c.write("\n")
+                    c.write(f"{text.strip()}\n")
                 for line, text in enumerate(f):
-                    if text != "\n":
-                        c.write(text)
+                    c.write(f"{text.strip()}\n")
     return f"{WORK_DIR}/combined.fasta"
 
 
@@ -121,25 +118,18 @@ def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
         nwk_path = f"{WORK_DIR}/sphere_binary_{tree_index}.nwk"
 
     if custom_ref:
-        # print("Using reference: ", custom_ref)
-        sphere_cmd = (
-            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
-            f"-i {fasta} "
-            f"-r {custom_ref} "
-            f"-e {WORK_DIR}/sphere_edges.txt "
-            f"-v {WORK_DIR}/sphere_nodes.txt "
-            f"-s {WORK_DIR}/sphere_seqs.txt"
-        )
+        ref_path = custom_ref
     else:
-        sphere_cmd = (
-            f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
-            f"-i {fasta} "
-            f"-r {SPHERE_DIR}/sample_inputs/ref.fas "
-            f"-e {WORK_DIR}/sphere_edges.txt "
-            f"-v {WORK_DIR}/sphere_nodes.txt "
-            f"-s {WORK_DIR}/sphere_seqs.txt"
-        )
-
+        ref_path = f"{SPHERE_DIR}/sample_inputs/ref.fas"
+    
+    sphere_cmd = (
+        f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
+        f"-i {fasta} "
+        f"-r {ref_path} "
+        f"-e {WORK_DIR}/sphere_edges.txt "
+        f"-v {WORK_DIR}/sphere_nodes.txt "
+        f"-s {WORK_DIR}/sphere_seqs.txt"
+    )
     sphere_to_nwk_cmd = (
         f"python {UTILS_DIR}/sphere_to_newick.py "
         f"{WORK_DIR}/sphere_nodes.txt "
@@ -233,8 +223,8 @@ def read_args():
 
 
 def main():
-    num_trees = 10
-    mc_iter = 25
+    num_trees = 2
+    mc_iter = 100
     p = 0.01
 
     fasta_path, ref_path = read_args()
