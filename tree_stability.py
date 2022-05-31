@@ -48,11 +48,12 @@ def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
             if random.random() < p:
                 options = ["A", "C", "G", "T", "N"]
                 if not keep_same_nucl_allowed:
-                    try: options.remove(nucl)
+                    try:
+                        options.remove(nucl)
                     except:
                         print(f"missing nucl = {nucl}")
                         raise ValueError
-                seq = seq[:i] + random.choice(options) + seq[i + 1:]
+                seq = seq[:i] + random.choice(options) + seq[i + 1 :]
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
 
@@ -83,7 +84,9 @@ def get_pairwise_distances(computed_trees):
         for j, other_tree in enumerate(computed_trees):
             if i != j:
                 t0 = dendropy.Tree.get(path=tree, schema="newick", taxon_namespace=taxa)
-                t1 = dendropy.Tree.get(path=other_tree, schema="newick", taxon_namespace=taxa)
+                t1 = dendropy.Tree.get(
+                    path=other_tree, schema="newick", taxon_namespace=taxa
+                )
                 d = treecompare.symmetric_difference(t0, t1)
                 if i in results:
                     results[i][j] = d
@@ -110,7 +113,9 @@ def clear_working_dir():
 def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
     # Construct commands to run sphere and produce binary newick
     if tree_index is None:
-        raise ValueError("Please provide an index to uniquely name the sphere output file")
+        raise ValueError(
+            "Please provide an index to uniquely name the sphere output file"
+        )
 
     if perturbed:
         nwk_path = f"{WORK_DIR}/sphere_binary_p_{tree_index}.nwk"
@@ -121,7 +126,7 @@ def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
         ref_path = custom_ref
     else:
         ref_path = f"{SPHERE_DIR}/sample_inputs/ref.fas"
-    
+
     sphere_cmd = (
         f"java -jar {SPHERE_DIR}/sphere/sphere.jar "
         f"-i {fasta} "
@@ -139,9 +144,7 @@ def run_sphere(fasta, custom_ref=None, perturbed=False, tree_index=None):
     )
 
     sphere_to_binary_nwk_cmd = (
-        f"python {UTILS_DIR}/binary.py "
-        f"{WORK_DIR}/sphere_output.nwk "
-        f"{nwk_path}"
+        f"python {UTILS_DIR}/binary.py " f"{WORK_DIR}/sphere_output.nwk " f"{nwk_path}"
     )
 
     # Run commands
@@ -174,7 +177,9 @@ def run_raxml(fasta, index):
     subprocess.run(raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
 
     # Standardize output tree to ensure it is binary
-    standardize_raxml_cmd = f"python {UTILS_DIR}/binary.py {rax_outpath} {final_outpath}"
+    standardize_raxml_cmd = (
+        f"python {UTILS_DIR}/binary.py {rax_outpath} {final_outpath}"
+    )
     subprocess.run(standardize_raxml_cmd.split(" "), stdout=subprocess.DEVNULL)
 
     with open(final_outpath, "r") as nwk_file:
@@ -190,22 +195,26 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
 
     # Set output files
     if perturbed:
-        mc_out = f'{method}_p_{tree_index}'
-        raxml_out = f'tree_p_{tree_index}'
+        mc_out = f"{method}_p_{tree_index}"
+        raxml_out = f"tree_p_{tree_index}"
     else:
-        mc_out = f'{method}_{tree_index}'
-        raxml_out = f'tree_{tree_index}'
+        mc_out = f"{method}_{tree_index}"
+        raxml_out = f"tree_{tree_index}"
 
     # Run method
-    if method.lower() == 'sphere':
+    if method.lower() == "sphere":
         nwk, nwk_path = run_sphere(fasta, ref, perturbed, tree_index)
-    elif method.lower() == 'raxml':
+    elif method.lower() == "raxml":
         nwk, nwk_path = run_raxml(fasta_with_ref, raxml_out)
     else:
-        raise ValueError(f'{method} is an invalid choice for method. Please use one of ["sphere", "raxml"]')
+        raise ValueError(
+            f'{method} is an invalid choice for method. Please use one of ["sphere", "raxml"]'
+        )
 
     # Minimize tree entropy with monte carlo
-    mc_nwk, mc_nwk_path = run_monte_carlo(nwk_path, fasta_with_ref, mc_out, num_iter=mc_iter)
+    mc_nwk, mc_nwk_path = run_monte_carlo(
+        nwk_path, fasta_with_ref, mc_out, num_iter=mc_iter
+    )
 
     orig_pscore = compute_parsimony_score(nwk_path, fasta_with_ref)
     mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
@@ -223,8 +232,8 @@ def read_args():
 
 
 def main():
-    num_trees = 2
-    mc_iter = 100
+    num_trees = 5
+    mc_iter = 40
     p = 0.01
 
     fasta_path, ref_path = read_args()
@@ -238,7 +247,7 @@ def main():
         4: "sphere_pert",
         5: "sphere_pert_mc",
         6: "raxml_pert",
-        7: "raxml_pert_mc"
+        7: "raxml_pert_mc",
     }
 
     running_results = {"dists": [], "pscores": []}
@@ -259,9 +268,10 @@ def main():
         tree_id = 0
         for fasta in [fasta_path, pert_fasta_path]:
             perturbed = False if fasta == fasta_path else True
-            for method in ['sphere', 'raxml']:
+            for method in ["sphere", "raxml"]:
                 nwk_path, mc_nwk_path, orig_pscore, mc_pscore = run_experiment(
-                    fasta, ref_path, method, tree_index, perturbed, mc_iter)
+                    fasta, ref_path, method, tree_index, perturbed, mc_iter
+                )
 
                 print(f" Parsimony: {orig_pscore}  --> {mc_pscore}")
                 computed_trees.append(nwk_path)
