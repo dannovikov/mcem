@@ -24,18 +24,19 @@ from sys import intern
 import dendropy
 from dendropy.model.parsimony import fitch_down_pass, fitch_up_pass
 import itertools
+from numpy import hamming
 from tqdm import tqdm
 
 
 def compute_avg_dist_along_tree(tree_path, fasta_path):
     tree, taxa = read_tree(tree_path)
     tree = infer_internal_node_sequences(tree, taxa, fasta_path)
-    d = average_distance_along_tree(tree, fasta_path)
-    return d
+    d,h,dv = average_distance_along_tree(tree, fasta_path)
+    return d,h,dv
 
 
 def hamming_distance(seq1, seq2):
-    assert len(seq1) == len(seq2)
+    assert len(seq1) == len(seq2), f"{len(seq1)} != {len(seq2)}, {seq1} != {seq2}"
     d = 0
     for i in range(len(seq1)):
         if 'N' in (seq1[i], seq2[i]): continue
@@ -43,6 +44,10 @@ def hamming_distance(seq1, seq2):
             d += 1
     return d
 
+def hamming_distance_by_label(tree, l1, l2):
+    seq1 = tree.find_node_with_taxon_label(l1).seq
+    seq2 = tree.find_node_with_taxon_label(l2).seq
+    return hamming_distance(seq1, seq2)
 
 def get_lca(tree, i, j):
     """
@@ -156,10 +161,13 @@ def average_distance_along_tree(tree, fasta):
     ensure_internal_seqs_exist(tree)
     seqs = extract_sequence_labels(fasta)
     dists = []
+    hdists = []
+    deviations = []
     for i, s1 in enumerate(tqdm(seqs, leave=False)):
         for j, s2 in enumerate(seqs):
             if i != j:
                 d = distance_along_tree(tree, s1, s2)
                 dists.append(d)
-    
-    return sum(dists)/len(dists)
+                hdists.append(hamming_distance_by_label(tree, s1, s2))
+                deviations.append((d - hdists[-1])**2)
+    return sum(dists)/len(dists), hdists, sum(deviations)/len(deviations)

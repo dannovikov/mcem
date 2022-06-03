@@ -226,10 +226,10 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
     mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
     
     print('Computing distance along tree...')
-    orig_tdist = td.compute_avg_dist_along_tree(nwk_path, fasta_with_ref)
-    mc_tdist = td.compute_avg_dist_along_tree(mc_nwk_path, fasta_with_ref)
+    orig_tdist, _, orig_dev = td.compute_avg_dist_along_tree(nwk_path, fasta_with_ref)
+    mc_tdist, _, mc_dev = td.compute_avg_dist_along_tree(mc_nwk_path, fasta_with_ref)
 
-    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist
+    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev
 
 
 def read_args():
@@ -260,7 +260,7 @@ def main():
         7: "raxml_pert_mc",
     }
 
-    running_results = {"dists": [], "pscores": [], "tdists": []}
+    running_results = {"dists": [], "pscores": [], "tdists": [], 'deviations': []}
     tree_index = 0
 
     while tree_index < num_trees:
@@ -275,12 +275,13 @@ def main():
         # Run experiments
         computed_trees = []
         tdists = []
+        deviations = []
         pscores = {}
         tree_id = 0
         for fasta in [fasta_path, pert_fasta_path]:
             perturbed = False if fasta == fasta_path else True
             for method in ["sphere", "raxml"]:
-                nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist = run_experiment(
+                nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev = run_experiment(
                     fasta, ref_path, method, tree_index, perturbed, mc_iter
                 )
 
@@ -293,20 +294,23 @@ def main():
                 computed_trees.append(mc_nwk_path)
                 tdists.append(orig_tdist)
                 tdists.append(mc_tdist)
+                deviations.append(orig_dev)
+                deviations.append(mc_dev)
 
         distances = compute_pairwise_rf_distances(computed_trees)
 
         running_results["dists"].append(matrix_dict_to_df(distances))
         running_results["pscores"].append(pscores)
         running_results['tdists'].append(tdists)
+        running_results['deviations'].append(deviations)
 
         tree_index += 1
 
     # Accumulate results
-    final_results = sum(running_results["dists"]) / len(running_results["dists"])
-    final_results.rename(index=tree_ids, columns=tree_ids, inplace=True)
-    final_results.to_csv(f"{OUT_DIR}/distances.csv")
-    print(final_results)
+    avg_dists = sum(running_results["dists"]) / len(running_results["dists"])
+    avg_dists.rename(index=tree_ids, columns=tree_ids, inplace=True)
+    avg_dists.to_csv(f"{OUT_DIR}/distances.csv")
+    print(avg_dists)
 
     pscore_df = pd.DataFrame(running_results["pscores"]).T
     pscore_df.to_csv(f"{OUT_DIR}/pscores.csv")
@@ -317,6 +321,10 @@ def main():
     tdist_df.to_csv(f"{OUT_DIR}/tdists.csv")
     print(tdist_df)
 
+    dev_df = pd.DataFrame(running_results['deviations']).T
+    dev_df.rename(index=tree_ids, inplace=True)
+    dev_df.to_csv(f"{OUT_DIR}/deviations.csv")
+    print(dev_df)
 
 if __name__ == "__main__":
     with cProfile.Profile() as pr:
