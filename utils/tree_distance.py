@@ -10,7 +10,7 @@ Usage:
     
     tree, taxa = read_tree(tree_path)
     tree = infer_internal_node_sequences(tree, taxa, fasta_path)
-    d = average_distance_along_tree(tree, fasta)
+    d = average_distance_along_tree(tree, fasta_[ath])
 
     s1 = "EPI_ISL_402124"
     s2 = "EPI_ISL_650723"
@@ -20,9 +20,19 @@ Usage:
 """
 
 from distutils.command import check
+from sys import intern
 import dendropy
 from dendropy.model.parsimony import fitch_down_pass, fitch_up_pass
 import itertools
+from tqdm import tqdm
+
+
+def compute_avg_dist_along_tree(tree_path, fasta_path):
+    tree, taxa = read_tree(tree_path)
+    tree = infer_internal_node_sequences(tree, taxa, fasta_path)
+    d = average_distance_along_tree(tree, fasta_path)
+    return d
+
 
 def hamming_distance(seq1, seq2):
     assert len(seq1) == len(seq2)
@@ -135,18 +145,18 @@ def distance_along_tree(tree, seq1, seq2):
     node1 = tree.find_node_with_taxon_label(seq1)
     node2 = tree.find_node_with_taxon_label(seq2)
     lca = get_lca(tree, node1, node2)
-    d1 = distance_to_ancestor(node1, lca)
-    d2 = distance_to_ancestor(node2, lca)
+    # d1 = distance_to_ancestor(node1, lca)
+    # d2 = distance_to_ancestor(node2, lca)
+    d1 = hamming_distance(node1.seq, lca.seq)
+    d2 = hamming_distance(node2.seq, lca.seq)
     return d1 + d2
 
 
 def average_distance_along_tree(tree, fasta):
     ensure_internal_seqs_exist(tree)
     seqs = extract_sequence_labels(fasta)
-
     dists = []
-    h_dists = []
-    for i, s1 in enumerate(seqs):
+    for i, s1 in enumerate(tqdm(seqs, leave=False)):
         for j, s2 in enumerate(seqs):
             if i != j:
                 d = distance_along_tree(tree, s1, s2)

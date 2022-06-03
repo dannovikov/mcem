@@ -25,7 +25,7 @@ def compute_initial_tree_entropy(tree, counts):
     It is designed to run be used once to obtain initial entropies each cluster.
     """
     tree_entropy = 0
-    for cluster in tree.nodes():
+    for cluster in tqdm(tree.nodes(), leave=False):
         clust_entropy = compute_cluster_entropy(cluster, counts)
         tree_entropy += clust_entropy * counts[cluster.label]["size"]
         counts[cluster.label]["entropy"] = clust_entropy
@@ -66,6 +66,15 @@ def compute_cluster_entropy(cluster, counts):
             entropy = p_i * np.log2(p_i) if p_i != 0 else 0
             col_entropy += entropy
     return col_entropy / SEQ_LEN
+
+
+# def fast_cluster_entropy(cluster, counts):
+#     size = counts[cluster.label]["size"]
+#     count = counts[cluster.label]["counts"]/size
+#     entropy = count * np.log2(count, where=count != 0)
+#     return -1 * np.sum(entropy) / SEQ_LEN
+
+
 
 
 def create_counts_matrices(tree, seqs_m, seqs_index, SEQ_LEN):
@@ -292,12 +301,14 @@ def main():
     seqs_d = create_seqs_dict(fasta)  
     SEQ_LEN = len(list(seqs_d.values())[0])
     seqs_m, seqs_index = create_seqs_matrix(seqs_d, SEQ_LEN)
+    print('Creating counts matrices...')
     counts = create_counts_matrices(tree_0, seqs_m, seqs_index, SEQ_LEN)
+    print('Computing starting entropy...')
     starting_entropy = compute_initial_tree_entropy(tree_0, counts)
 
     current_entropy = starting_entropy
     total_moves = 0
-
+    print('Running moves experiment...')
     for k in tqdm(range(int(num_iter))):
         # TODO: Retain copies between rejected moves
         tree = tree_copy(tree_0)
@@ -311,7 +322,6 @@ def main():
         node_i = tree.find_node_with_label(i.label)
         node_j = tree.find_node_with_label(j.label)
         j_parent = node_j.parent_node
-
         new_counts, rerooted = move(tree, node_i, node_j, new_counts)
 
         if rerooted:
@@ -329,7 +339,6 @@ def main():
             total_moves += 1
             tree_0.write(path=out_nwk,schema="newick",
                 suppress_internal_node_labels=True,suppress_edge_lengths=True, suppress_rooting=True)
-            
 
     print(f" Entropy:   {starting_entropy:.2f} --> {current_entropy:.2f} after {total_moves}/{num_iter} accepted moves.")
     #Save final tree
@@ -343,4 +352,25 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import io
+    import pstats
+    import cProfile
+
+    with cProfile.Profile() as pr:
+        main()
+    
+    stream = io.StringIO()
+    stats = pstats.Stats(pr, stream=stream)
+    stats.sort_stats("cumtime")
+    stats.print_stats()
+
+    with open('mc_stats_counter.txt', 'r') as f:
+        mcsc = f.read()
+
+
+    with open(f'mc_stats_{mcsc}.txt', 'w') as f:
+        f.write(stream.getvalue())
+
+    with open(f'mc_stats_counter.txt', 'w') as f:
+        f.write(str(int(mcsc) + 1))
+    

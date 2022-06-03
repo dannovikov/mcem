@@ -5,11 +5,15 @@ Optional arguments:
     2. ref:  path to reference fasta file [default: EPI_ISL_405124]
 """
 
+import cProfile
+import io
+import pstats
 import sys
 import subprocess
 import random
 import json
 import os
+
 import pandas as pd
 from tqdm import tqdm
 
@@ -18,6 +22,7 @@ from dendropy.calculate import treecompare
 
 from utils.parsimony_score import compute_parsimony_score
 from utils.seq_utils import create_seqs_dict
+import utils.tree_distance as td
 
 MC_DIR = "/home/dnovikov1/dan/entropy"  # Monte carlo file
 SPHERE_DIR = "/home/dnovikov1/dan/sphere"  # Sphere
@@ -76,7 +81,7 @@ def cat(fasta, ref):
     return f"{WORK_DIR}/combined.fasta"
 
 
-def get_pairwise_distances(computed_trees):
+def compute_pairwise_rf_distances(computed_trees):
     # Compute pairwise distances
     results = {}
     taxa = dendropy.TaxonNamespace()
@@ -216,10 +221,15 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
         nwk_path, fasta_with_ref, mc_out, num_iter=mc_iter
     )
 
+    print('Computing parsimony score...')
     orig_pscore = compute_parsimony_score(nwk_path, fasta_with_ref)
     mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
+    
+    print('Computing distance along tree...')
+    orig_tdist = td.compute_avg_dist_along_tree(nwk_path, fasta_with_ref)
+    mc_tdist = td.compute_avg_dist_along_tree(mc_nwk_path, fasta_with_ref)
 
-    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore
+    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist
 
 
 def read_args():
@@ -232,8 +242,8 @@ def read_args():
 
 
 def main():
-    num_trees = 5
-    mc_iter = 40
+    num_trees = 2
+    mc_iter = 50
     p = 0.01
 
     fasta_path, ref_path = read_args()
@@ -250,7 +260,7 @@ def main():
         7: "raxml_pert_mc",
     }
 
-    running_results = {"dists": [], "pscores": []}
+    running_results = {"dists": [], "pscores": [], "tdists": []}
     tree_index = 0
 
     while tree_index < num_trees:
@@ -264,28 +274,31 @@ def main():
 
         # Run experiments
         computed_trees = []
+        tdists = []
         pscores = {}
         tree_id = 0
         for fasta in [fasta_path, pert_fasta_path]:
             perturbed = False if fasta == fasta_path else True
             for method in ["sphere", "raxml"]:
-                nwk_path, mc_nwk_path, orig_pscore, mc_pscore = run_experiment(
+                nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist = run_experiment(
                     fasta, ref_path, method, tree_index, perturbed, mc_iter
                 )
 
                 print(f" Parsimony: {orig_pscore}  --> {mc_pscore}")
-                computed_trees.append(nwk_path)
-                computed_trees.append(mc_nwk_path)
-
                 pscores[tree_ids[tree_id]] = orig_pscore
                 tree_id += 1
                 pscores[tree_ids[tree_id]] = mc_pscore
                 tree_id += 1
+                computed_trees.append(nwk_path)
+                computed_trees.append(mc_nwk_path)
+                tdists.append(orig_tdist)
+                tdists.append(mc_tdist)
 
-        distances = get_pairwise_distances(computed_trees)
+        distances = compute_pairwise_rf_distances(computed_trees)
 
         running_results["dists"].append(matrix_dict_to_df(distances))
         running_results["pscores"].append(pscores)
+        running_results['tdists'].append(tdists)
 
         tree_index += 1
 
@@ -293,13 +306,26 @@ def main():
     final_results = sum(running_results["dists"]) / len(running_results["dists"])
     final_results.rename(index=tree_ids, columns=tree_ids, inplace=True)
     final_results.to_csv(f"{OUT_DIR}/distances.csv")
+    print(final_results)
 
     pscore_df = pd.DataFrame(running_results["pscores"]).T
     pscore_df.to_csv(f"{OUT_DIR}/pscores.csv")
-
-    print(final_results)
     print(pscore_df)
+
+    tdist_df = pd.DataFrame(running_results['tdists']).T
+    tdist_df.rename(index=tree_ids, inplace=True)
+    tdist_df.to_csv(f"{OUT_DIR}/tdists.csv")
+    print(tdist_df)
 
 
 if __name__ == "__main__":
-    main()
+    with cProfile.Profile() as pr:
+        main()
+    stream = io.StringIO()
+    stats = pstats.Stats(pr, stream=stream)
+    stats.sort_stats("cumtime")
+    stats.print_stats()
+
+    with open('stats.txt', 'w') as f:
+        f.write(stream.getvalue())
+    
