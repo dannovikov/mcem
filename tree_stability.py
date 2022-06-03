@@ -327,13 +327,14 @@ def main():
     print(dev_df)
 
 if __name__ == "__main__":
-    with cProfile.Profile() as pr:
-        main()
-    stream = io.StringIO()
-    stats = pstats.Stats(pr, stream=stream)
-    stats.sort_stats("cumtime")
-    stats.print_stats()
+    main()
+    # with cProfile.Profile() as pr:
+    #     main()
+    # stream = io.StringIO()
+    # stats = pstats.Stats(pr, stream=stream)
+    # stats.sort_stats("cumtime")
+    # stats.print_stats()
 
-    with open('stats.txt', 'w') as f:
-        f.write(stream.getvalue())
+    # with open('stats.txt', 'w') as f:
+    #     f.write(stream.getvalue())
     

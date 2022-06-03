@@ -352,25 +352,26 @@ def main():
 
 
 if __name__ == "__main__":
-    import io
-    import pstats
-    import cProfile
+    main()
+    # import io
+    # import pstats
+    # import cProfile
 
-    with cProfile.Profile() as pr:
-        main()
+    # with cProfile.Profile() as pr:
+    #     main()
     
-    stream = io.StringIO()
-    stats = pstats.Stats(pr, stream=stream)
-    stats.sort_stats("cumtime")
-    stats.print_stats()
+    # stream = io.StringIO()
+    # stats = pstats.Stats(pr, stream=stream)
+    # stats.sort_stats("cumtime")
+    # stats.print_stats()
 
-    with open('mc_stats_counter.txt', 'r') as f:
-        mcsc = f.read()
+    # with open('mc_stats_counter.txt', 'r') as f:
+    #     mcsc = f.read()
 
 
-    with open(f'mc_stats_{mcsc}.txt', 'w') as f:
-        f.write(stream.getvalue())
+    # with open(f'mc_stats_{mcsc}.txt', 'w') as f:
+    #     f.write(stream.getvalue())
 
-    with open(f'mc_stats_counter.txt', 'w') as f:
-        f.write(str(int(mcsc) + 1))
+    # with open(f'mc_stats_counter.txt', 'w') as f:
+    #     f.write(str(int(mcsc) + 1))
     
