@@ -26,11 +26,12 @@ from dendropy.model.parsimony import fitch_down_pass, fitch_up_pass
 import itertools
 from numpy import hamming
 from tqdm import tqdm
-
+import os
 
 def compute_avg_dist_along_tree(tree_path, fasta_path):
     tree, taxa = read_tree(tree_path)
     tree = infer_internal_node_sequences(tree, taxa, fasta_path)
+    ensure_internal_seqs_exist(tree)
     d,h,dv = average_distance_along_tree(tree, fasta_path)
     return d,h,dv
 
@@ -47,7 +48,7 @@ def hamming_distance(seq1, seq2):
 def hamming_distance_by_label(tree, l1, l2):
     seq1 = tree.find_node_with_taxon_label(l1).seq
     seq2 = tree.find_node_with_taxon_label(l2).seq
-    return hamming_distance(seq1, seq2)
+    return hamming_distance(seq1, seq2) 
 
 def get_lca(tree, i, j):
     """
@@ -155,6 +156,8 @@ def distance_along_tree(tree, seq1, seq2):
     d1 = hamming_distance(node1.seq, lca.seq)
     d2 = hamming_distance(node2.seq, lca.seq)
     return d1 + d2
+
+
 
 
 def average_distance_along_tree(tree, fasta):

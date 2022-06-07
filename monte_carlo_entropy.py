@@ -68,13 +68,12 @@ def compute_cluster_entropy(cluster, counts):
     return col_entropy / SEQ_LEN
 
 
+# This does not produce desired results.
 # def fast_cluster_entropy(cluster, counts):
 #     size = counts[cluster.label]["size"]
 #     count = counts[cluster.label]["counts"]/size
 #     entropy = count * np.log2(count, where=count != 0)
 #     return -1 * np.sum(entropy) / SEQ_LEN
-
-
 
 
 def create_counts_matrices(tree, seqs_m, seqs_index, SEQ_LEN):

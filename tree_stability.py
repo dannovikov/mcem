@@ -62,6 +62,13 @@ def perturb_sequences(seqs, p=0.05, keep_same_nucl_allowed=False):
         perturbed_seqs[s_id] = seq
     return perturbed_seqs
 
+from utils.perturb_sequences import perturb_sequences as perturb_seq_list
+def perturb_sequences(seqs, p=0.05):
+    s = list(seqs.values())
+    s = perturb_seq_list(s, p)
+    d = dict(zip(seqs.keys(), s))
+    return d
+
 
 def write_seqs(seqs, out_file):
     with open(out_file, "w") as f:
@@ -226,10 +233,10 @@ def run_experiment(fasta, ref, method, tree_index, perturbed, mc_iter=10):
     mc_pscore = compute_parsimony_score(mc_nwk_path, fasta_with_ref)
     
     print('Computing distance along tree...')
-    orig_tdist, _, orig_dev = td.compute_avg_dist_along_tree(nwk_path, fasta_with_ref)
-    mc_tdist, _, mc_dev = td.compute_avg_dist_along_tree(mc_nwk_path, fasta_with_ref)
+    orig_tdist, orig_hdist, orig_dev = td.compute_avg_dist_along_tree(nwk_path, fasta_with_ref)
+    mc_tdist, mc_hdist, mc_dev = td.compute_avg_dist_along_tree(mc_nwk_path, fasta_with_ref)
 
-    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev
+    return nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev, orig_hdist, mc_hdist
 
 
 def read_args():
@@ -260,7 +267,7 @@ def main():
         7: "raxml_pert_mc",
     }
 
-    running_results = {"dists": [], "pscores": [], "tdists": [], 'deviations': []}
+    running_results = {"dists": [], "pscores": [], "tdists": [], 'deviations': [], 'hdists': []}
     tree_index = 0
 
     while tree_index < num_trees:
@@ -281,7 +288,7 @@ def main():
         for fasta in [fasta_path, pert_fasta_path]:
             perturbed = False if fasta == fasta_path else True
             for method in ["sphere", "raxml"]:
-                nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev = run_experiment(
+                nwk_path, mc_nwk_path, orig_pscore, mc_pscore, orig_tdist, mc_tdist, orig_dev, mc_dev, orig_hdist, mc_hdist = run_experiment(
                     fasta, ref_path, method, tree_index, perturbed, mc_iter
                 )
 
